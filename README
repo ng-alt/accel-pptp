@@ -1,0 +1,50 @@
+Overview
+--------
+The ACCEL-PPTP is PPTP client/server based on POPTOP (http://www.poptop.org) and PPTPCLIENT (http://pptpclient.sourceforge.net).
+ACCEL-PPTP uses kernel module to increase performance and decrease system usage.
+For more documentation about PPTP visit POPTOP web site.
+
+Requirment
+----------
+1. modern linux distribution
+1. kernel-2.6.15 or later
+2. pppd-2.4.2 or later
+
+
+Insallation
+-----------
+Do make client_install for installing pptp client.
+Do make server_install for installing pptp server.
+
+
+Configuration
+-------------
+If you are beginner in PPTP please read documentation available on POPTOP web site.
+Configuration is same as original pptpd and pptp.
+Exception in configuration of client is:
+replace line 
+  pty "pptp x.x.x.x ...." 
+to 
+  plugin "pptp.so"
+  pptp_server x.x.x.x
+  pptp_phone xxxx (optional)
+  pptp_window xxx (optional) - this is sliding window size (at current time automatic algorithm is not implemented),
+                               set it to  3-10 for low-speed connections,
+                                      to   >10 for hi-speed connection. 
+  
+Remove lock option in /etc/ppp/options.pptp, /etc/ppp/options.pptpd or similar if it exists.
+
+Add line "alias char-major-245 ppp_pptp" to /etc/modprobe.conf for automatic module loading.
+
+See configuration example in example directory.
+
+Warning
+-------
+The mtu/mru parametr must be less then 1437
+This driver conflicts with ip_gre driver.
+
+
+Please feedback me about your results.
+Good luck.
+http://accel-pptp.sourceforge.net
+xeb@mail.ru
