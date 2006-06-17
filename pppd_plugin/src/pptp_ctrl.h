@@ -25,7 +25,7 @@ typedef void (*pptp_conn_cb)(PPTP_CONN*, enum conn_state);
  */
 PPTP_CONN * pptp_conn_open(int inet_sock, int isclient,
 			   pptp_conn_cb callback);
-PPTP_CALL * pptp_call_open(PPTP_CONN * conn,
+PPTP_CALL * pptp_call_open(PPTP_CONN * conn, int call_id,
 			   pptp_call_cb callback, char *phonenr,int window);
 int pptp_conn_established(PPTP_CONN * conn);
 /* soft close.  Will callback on completion. */

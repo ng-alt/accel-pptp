@@ -321,11 +321,10 @@ int pptp_conn_established(PPTP_CONN *conn) {
 /* This currently *only* works for client call requests.
  * We need to do something else to allocate calls for incoming requests.
  */
-PPTP_CALL * pptp_call_open(PPTP_CONN * conn, pptp_call_cb callback,
+PPTP_CALL * pptp_call_open(PPTP_CONN * conn, int call_id,pptp_call_cb callback,
         char *phonenr,int window)
 {
     PPTP_CALL * call;
-    int i;
     int idx, rc;
     /* Send off the call request */
     struct pptp_out_call_rqst packet = {
@@ -338,7 +337,7 @@ PPTP_CALL * pptp_call_open(PPTP_CONN * conn, pptp_call_cb callback,
     assert(conn && conn->call);
     assert(conn->conn_state == CONN_ESTABLISHED);
     /* Assign call id */
-    if (!vector_scan(conn->call, 0, PPTP_MAX_CHANNELS - 1, &i))
+    if (!call_id && !vector_scan(conn->call, 0, PPTP_MAX_CHANNELS - 1, &call_id))
         /* no more calls available! */
         return NULL;
     /* allocate structure. */
@@ -346,7 +345,7 @@ PPTP_CALL * pptp_call_open(PPTP_CONN * conn, pptp_call_cb callback,
     /* Initialize call structure */
     call->call_type = PPTP_CALL_PNS;
     call->state.pns = PNS_IDLE;
-    call->call_id   = (u_int16_t) i;
+    call->call_id   = (u_int16_t) call_id;
     call->sernum    = conn->call_serial_number++;
     call->callback  = callback;
     call->closure   = NULL;
@@ -370,7 +369,7 @@ PPTP_CALL * pptp_call_open(PPTP_CONN * conn, pptp_call_cb callback,
         pptp_reset_timer();
         call->state.pns = PNS_WAIT_REPLY;
         /* and add it to the call vector */
-        vector_insert(conn->call, i, call);
+        vector_insert(conn->call, call_id, call);
         return call;
     } else { /* oops, unsuccessful. Deallocate. */
         free(call);

@@ -7,7 +7,7 @@ For more documentation about PPTP visit POPTOP web site.
 Requirment
 ----------
 1. modern linux distribution
-1. kernel-2.6.15 or later
+1. kernel-2.6.15 or later with PPPOX support
 2. pppd-2.4.2 or later
 
 
@@ -33,8 +33,6 @@ to
                                       to   >10 for hi-speed connection. 
   
 Remove lock option in /etc/ppp/options.pptp, /etc/ppp/options.pptpd or similar if it exists.
-
-Add line "alias char-major-245 ppp_pptp" to /etc/modprobe.conf for automatic module loading.
 
 See configuration example in example directory.
 

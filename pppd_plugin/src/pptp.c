@@ -47,41 +47,35 @@
 #include "pppd/patchlevel.h"
 
 #include "pptp_callmgr.h"
+#include <linux/if.h>
+#include <linux/if_ether.h>
+#include "if_pppox.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 
-#define PPPIOCCONNECT	_IOW('t', 58, int)	/* connect channel to unit */
+
 
 extern char** environ;
 
 char pppd_version[] = PPP_VERSION;
 extern int new_style_driver;
 
-struct pptp_conn_t
-{
-	__u16 call_id;
-	__u16 peer_call_id;
-	struct in_addr sin_addr;
-	struct in_addr loc_addr;
-	__u32 timeout;
-	__u32 window;
-};
 
 char *pptp_server = NULL;
 char *pptp_client = NULL;
 char *pptp_phone = NULL;
 int pptp_call_id_pair=0;
 int pptp_window=10;
-static int pptp_verbose;
+static int pptp_timeout=10000;
 struct in_addr localbind = { INADDR_NONE };
 
 static int callmgr_sock;
 static int pptp_fd;
 
 //static struct in_addr get_ip_address(char *name);
-static int open_callmgr(struct in_addr inetaddr, char *phonenr,int window);
-static void launch_callmgr(struct in_addr inetaddr, char *phonenr,int window);
+static int open_callmgr(int call_id,struct in_addr inetaddr, char *phonenr,int window);
+static void launch_callmgr(int call_is,struct in_addr inetaddr, char *phonenr,int window);
 static int get_call_id(int sock, pid_t gre, pid_t pppd,
 		 u_int16_t *call_id, u_int16_t *peer_call_id);
 
@@ -98,8 +92,8 @@ static option_t Options[] =
       "PPTP Phone number" },
     { "pptp_window", o_int, &pptp_window,
       "PPTP sliding window size" },
-    { "pptp_verbose", o_int, &pptp_verbose,
-      "Be verbose about discovered access concentrators"},
+    { "pptp_timeout", o_int, &pptp_timeout,
+      "timeout for waiting reordered packets"},
     { NULL }
 };
 
@@ -124,8 +118,7 @@ struct channel pptp_channel = {
 
 static int pptp_start_server(void)
 {
-	int r;
-	struct pptp_conn_t conn={0,0};
+	struct sockaddr_pppox src_addr,dst_addr;
 	char *p;
 	for(p=pptp_client;*p && *p!=':'; ++p);
 	if (*p!=':')
@@ -142,12 +135,12 @@ static int pptp_start_server(void)
 		fatal("PPTP: Unknown host %s\n", pptp_server);
 		return -1;
 	}*/
-	if (!inet_aton(p,&conn.sin_addr))
+	if (!inet_aton(p,&dst_addr.sa_addr.pptp.sin_addr))
 	{
 		fatal("PPTP: invalid ip %s\n",p);
 		return -1;
 	}
-	if (!inet_aton(pptp_client,&conn.loc_addr))
+	if (!inet_aton(pptp_client,&src_addr.sa_addr.pptp.sin_addr))
 	{
 		fatal("PPTP: invalid ip %s\n",pptp_client);
 		return -1;
@@ -159,24 +152,32 @@ static int pptp_start_server(void)
 		return -1;
 	}
 
-	conn.call_id=htons(pptp_call_id_pair&0xffff);
-	conn.peer_call_id=htons(pptp_call_id_pair>>16);
-	conn.timeout=0;
-	conn.window=pptp_window;
+	src_addr.sa_family=AF_PPPOX;
+	src_addr.sa_protocol=PX_PROTO_PPTP;
+	src_addr.sa_addr.pptp.call_id=htons(pptp_call_id_pair&0xffff);
 
-	info("PPTP: connect %s:%s call_id=%i peer_call_id=%i\n",inet_ntoa(conn.loc_addr),inet_ntoa(conn.sin_addr),conn.call_id,conn.peer_call_id);
+	dst_addr.sa_family=AF_PPPOX;
+	dst_addr.sa_protocol=PX_PROTO_PPTP;
+	dst_addr.sa_addr.pptp.call_id=htons(pptp_call_id_pair>>16);
 
-	pptp_fd=open("/dev/pptp",O_RDWR);
+	pptp_fd=socket(AF_PPPOX,SOCK_STREAM,PX_PROTO_PPTP);
 	if (pptp_fd<0)
 	{
-		fatal("PPTP: Failed to open /dev/pptp\n");
+		fatal("PPTP: failed to create PPTP socket\n");
 		return -1;
 	}
-
-	r=ioctl(pptp_fd,PPPIOCCONNECT,&conn);
-	if (r)
+	if (setsockopt(pptp_fd,0,PPTP_SO_WINDOW,&pptp_window,sizeof(pptp_window)))
 	{
-		fatal("PPTP: Failed to connect (%i)\n",r);
+		warn("PPTP: failed to setsockopt\n");
+	}
+	if (bind(pptp_fd,(struct sockaddr*)&src_addr,sizeof(src_addr)))
+	{
+		fatal("PPTP: failed to bind PPTP socket\n");
+		return -1;
+	}
+	if (connect(pptp_fd,(struct sockaddr*)&dst_addr,sizeof(dst_addr)))
+	{
+		fatal("PPTP: failed to connect PPTP socket\n");
 		return -1;
 	}
 
@@ -184,8 +185,8 @@ static int pptp_start_server(void)
 }
 static int pptp_start_client(void)
 {
-	int r;
-	struct pptp_conn_t conn={0,0};
+	int r,len;
+	struct sockaddr_pppox src_addr,dst_addr;
 	struct hostent *hostinfo;
 
 	hostinfo=gethostbyname(pptp_server);
@@ -194,12 +195,12 @@ static int pptp_start_client(void)
 		fatal("PPTP: Unknown host %s\n", pptp_server);
 		return -1;
 	}
-	conn.sin_addr=*(struct in_addr*)hostinfo->h_addr;
+	dst_addr.sa_addr.pptp.sin_addr=*(struct in_addr*)hostinfo->h_addr;
 	{
 		int sock;
 		struct sockaddr_in addr;
-		int len=sizeof(addr);
-		addr.sin_addr=conn.sin_addr;
+		len=sizeof(addr);
+		addr.sin_addr=dst_addr.sa_addr.pptp.sin_addr;
 		addr.sin_family=AF_INET;
 		addr.sin_port=htons(1700);
 		sock=socket(AF_INET,SOCK_DGRAM,0);
@@ -209,37 +210,55 @@ static int pptp_start_client(void)
 			return -1;
 		}
 		getsockname(sock,(struct sockaddr*)&addr,&len);
-		conn.loc_addr=addr.sin_addr;
+		src_addr.sa_addr.pptp.sin_addr=addr.sin_addr;
 		close(sock);
 	}
-	info("PPTP: connect server=%s\n",inet_ntoa(conn.sin_addr));
+	//info("PPTP: connect server=%s\n",inet_ntoa(conn.sin_addr));
 	//conn.loc_addr.s_addr=INADDR_NONE;
-	conn.timeout=1;
-	conn.window=pptp_window;
+	//conn.timeout=1;
+	//conn.window=pptp_window;
 
-   do {
+	src_addr.sa_family=AF_PPPOX;
+	src_addr.sa_protocol=PX_PROTO_PPTP;
+	src_addr.sa_addr.pptp.call_id=0;
+
+	dst_addr.sa_family=AF_PPPOX;
+	dst_addr.sa_protocol=PX_PROTO_PPTP;
+	dst_addr.sa_addr.pptp.call_id=0;
+
+	pptp_fd=socket(AF_PPPOX,SOCK_STREAM,PX_PROTO_PPTP);
+	if (pptp_fd<0)
+	{
+		fatal("PPTP: failed to create PPTP socket\n");
+		return -1;
+	}
+	if (setsockopt(pptp_fd,0,PPTP_SO_WINDOW,&pptp_window,sizeof(pptp_window)))
+		warn("PPTP: failed to setsockopt\n");
+	if (setsockopt(pptp_fd,0,PPTP_SO_TIMEOUT,&pptp_timeout,sizeof(pptp_timeout)))
+		warn("PPTP: failed to setsockopt\n");
+	if (bind(pptp_fd,(struct sockaddr*)&src_addr,sizeof(src_addr)))
+	{
+		fatal("PPTP: failed to bind PPTP socket\n");
+		return -1;
+	}
+	len=sizeof(src_addr);
+	getsockname(pptp_fd,(struct sockaddr*)&src_addr,&len);
+
+  do {
         /*
          * Open connection to call manager (Launch call manager if necessary.)
          */
-        callmgr_sock = open_callmgr(conn.sin_addr, pptp_phone,pptp_window);
+        callmgr_sock = open_callmgr(src_addr.sa_addr.pptp.call_id,dst_addr.sa_addr.pptp.sin_addr, pptp_phone,pptp_window);
         /* Exchange PIDs, get call ID */
     } while (get_call_id(callmgr_sock, getpid(), getpid(),
-               &conn.call_id, &conn.peer_call_id) < 0);
+               &r, &dst_addr.sa_addr.pptp.call_id) < 0);
 
-	pptp_fd=open("/dev/pptp",O_RDWR);
-	if (pptp_fd<0)
+	if (connect(pptp_fd,(struct sockaddr*)&dst_addr,sizeof(dst_addr)))
 	{
-		fatal("Failed to open /dev/pptp\n");
-		return -1;
-	}
-	r=ioctl(pptp_fd,PPPIOCCONNECT,&conn);
-	if (r)
-	{
-		fatal("Failed to connect (%i)\n",r);
+		fatal("PPTP: failed to connect PPTP socket\n");
 		return -1;
 	}
 
-	//pptp_fd=fd;
 	return pptp_fd;
 }
 static int pptp_connect(void)
@@ -259,7 +278,7 @@ static void pptp_disconnect(void)
 	close(pptp_fd);
 }
 
-static int open_callmgr(struct in_addr inetaddr, char *phonenr,int window)
+static int open_callmgr(int call_id,struct in_addr inetaddr, char *phonenr,int window)
 {
     /* Try to open unix domain socket to call manager. */
     struct sockaddr_un where;
@@ -294,7 +313,7 @@ static int open_callmgr(struct in_addr inetaddr, char *phonenr,int window)
                     /* close the pty and gre in the call manager */
                    // close(pty_fd);
                     //close(gre_fd);
-                    launch_callmgr(inetaddr, phonenr,window);
+                    launch_callmgr(call_id,inetaddr, phonenr,window);
                 }
                 default: /* parent */
                     waitpid(pid, &status, 0);
@@ -312,15 +331,17 @@ static int open_callmgr(struct in_addr inetaddr, char *phonenr,int window)
 }
 
 /*** call the call manager main ***********************************************/
-static void launch_callmgr(struct in_addr inetaddr, char *phonenr,int window)
+static void launch_callmgr(int call_id,struct in_addr inetaddr, char *phonenr,int window)
 {
 			char win[10];
-      char *my_argv[7] = { "pptp", inet_ntoa(inetaddr), "--phone",phonenr,"--window",win,NULL };
+			char call[10];
+      char *my_argv[9] = { "pptp", inet_ntoa(inetaddr), "--call_id",call,"--phone",phonenr,"--window",win,NULL };
       char buf[128];
       sprintf(win,"%u",window);
+      sprintf(call,"%u",call_id);
       snprintf(buf, sizeof(buf), "pptp: call manager for %s", my_argv[1]);
       //inststr(argc, argv, envp, buf);
-      exit(callmgr_main(6, my_argv, environ));
+      exit(callmgr_main(8, my_argv, environ));
 }
 
 /*** exchange data with the call manager  *************************************/

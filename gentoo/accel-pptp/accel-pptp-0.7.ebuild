@@ -4,8 +4,8 @@
 
 inherit linux-mod eutils autotools
 
-DESCRIPTION="Linux Point-to-Point Tunnelling Protocol Client/Server"
-SRC_URI="mirror://sourceforge/accel-pptp/accel-pptp-beta-0.6.tar.bz2"
+DESCRIPTION="Point-to-Point Tunnelling Protocol Client/Server for Linux"
+SRC_URI="mirror://sourceforge/accel-pptp/accel-pptp-beta-0.7.tar.bz2"
 HOMEPAGE="http://accel-pptp.sourceforge.net/"
 
 SLOT="0"
@@ -13,19 +13,18 @@ LICENSE="GPL"
 KEYWORDS="~amd64 ~x86"
 IUSE="tcpd server"
 
-S=${WORKDIR}/accel-pptp-beta-0.6
+S=${WORKDIR}/accel-pptp-beta-0.7
 
 DEPEND=">=net-dialup/ppp-2.4.2
         >=virtual/linux-sources-2.6.15
 	tcpd? ( sys-apps/tcp-wrappers )"
 RDEPEND="virtual/modutils"
 
-MODULE_NAMES="ppp_pptp(misc:${S}/ppp_pptp)"
+MODULE_NAMES="pptp(misc:${S}/kernel/driver)"
 BUILD_TARGETS="default"
 BUILD_PARAMS="KDIR=${KERNEL_DIR}"
-CONFIG_CHECK="PPP"
-MODULESD_PPPPPTP_ALIASES="char-major-245 ppp_pptp"
-MODULESD_PPPPPTP_EXAMPLES=("ppp_pptp min_window=5" "ppp_pptp max_window=100")
+CONFIG_CHECK="PPP PPPOE"
+MODULESD_PPTP_EXAMPLES=("pptp min_window=5" "pptp max_window=100")
 
 
 src_unpack() {
@@ -38,7 +37,7 @@ src_unpack() {
 	sed -i -e "s:\\(#define[ \\t]*VERSION[ \\t]*\\)\".*\":\\1\"${PPPD_VER}\":" "${S}/pptpd-1.3.1/plugins/patchlevel.h"
 	sed -i -e "s:\\(#define[ \\t]*VERSION[ \\t]*\\)\".*\":\\1\"${PPPD_VER}\":" "${S}/pppd_plugin/src/pppd/patchlevel.h"
 	
-	convert_to_m ${S}/ppp_pptp/Makefile
+	convert_to_m ${S}/kernel/driver/Makefile
 }
 
 src_compile() {
@@ -60,7 +59,7 @@ src_compile() {
 	econf ${myconf} || die "configure failed"
 	emake COPTS="${CFLAGS}" || die "make failed"
 	
-	cd ${S}/ppp_pptp
+	cd ${S}/kernel/driver
 	linux-mod_src_compile || die "failed to build driver"
 }
 
@@ -89,13 +88,8 @@ src_install () {
 	insinto /usr/lib/pppd/${PPPD_VER}
 	newins pptp.so.0.0.0 pptp.so
 
-	cd ${S}/ppp_pptp
+	cd ${S}/kernel/driver
 	linux-mod_src_install
-	
-	cd ${S}
-        insinto /etc/modules.d
-        newins  "${FILESDIR}/modules.d" pptp	    
-	mknod /dev/pptp c 245 0 >& /dev/null
 	
 	cd ${S}
 	dodoc README

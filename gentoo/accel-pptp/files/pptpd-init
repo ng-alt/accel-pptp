@@ -6,6 +6,7 @@ depend() {
 
 start() {
 	ebegin "Starting pptpd"
+	modprobe pptp
 	start-stop-daemon --start --quiet --exec /usr/sbin/pptpd -- ${PPTPD_OPTS}
 	eend $?
 }

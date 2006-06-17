@@ -1,4 +1,4 @@
-TARGET = ppp_pptp
+TARGET = pptp
 OBJS = pptp.o  
 MDIR = drivers/net
 
@@ -9,7 +9,7 @@ PWD = $(shell pwd)
 DEST = /lib/modules/$(CURRENT)/kernel/$(MDIR)
 
 obj-m      := $(TARGET).o
-$(TARGET)-objs      := $(OBJS)
+#$(TARGET)-objs      := $(OBJS)
 
 default:
 	make -C $(KDIR) SUBDIRS=$(PWD) modules
