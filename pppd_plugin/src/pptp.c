@@ -206,7 +206,7 @@ static int pptp_start_client(void)
 		sock=socket(AF_INET,SOCK_DGRAM,0);
 		if (connect(sock,(struct sockaddr*)&addr,sizeof(addr)))
 		{
-			fatal("PPTP: connect failed\n");
+			fatal("PPTP: connect failed (%s)\n",strerror(errno));
 			return -1;
 		}
 		getsockname(sock,(struct sockaddr*)&addr,&len);
@@ -229,16 +229,16 @@ static int pptp_start_client(void)
 	pptp_fd=socket(AF_PPPOX,SOCK_STREAM,PX_PROTO_PPTP);
 	if (pptp_fd<0)
 	{
-		fatal("PPTP: failed to create PPTP socket\n");
+		fatal("PPTP: failed to create PPTP socket (%s)\n",strerror(errno));
 		return -1;
 	}
 	if (setsockopt(pptp_fd,0,PPTP_SO_WINDOW,&pptp_window,sizeof(pptp_window)))
-		warn("PPTP: failed to setsockopt\n");
+		warn("PPTP: failed to setsockopt PPTP_SO_WINDOW (%s)\n",strerror(errno));
 	if (setsockopt(pptp_fd,0,PPTP_SO_TIMEOUT,&pptp_timeout,sizeof(pptp_timeout)))
-		warn("PPTP: failed to setsockopt\n");
+		warn("PPTP: failed to setsockopt PPTP_SO_TIMEOUT (%s)\n",strerror(errno));
 	if (bind(pptp_fd,(struct sockaddr*)&src_addr,sizeof(src_addr)))
 	{
-		fatal("PPTP: failed to bind PPTP socket\n");
+		fatal("PPTP: failed to bind PPTP socket (%s)\n",strerror(errno));
 		return -1;
 	}
 	len=sizeof(src_addr);
@@ -255,7 +255,7 @@ static int pptp_start_client(void)
 
 	if (connect(pptp_fd,(struct sockaddr*)&dst_addr,sizeof(dst_addr)))
 	{
-		fatal("PPTP: failed to connect PPTP socket\n");
+		fatal("PPTP: failed to connect PPTP socket (%s)\n",strerror(errno));
 		return -1;
 	}
 
@@ -391,7 +391,7 @@ void plugin_init(void)
     add_options(Options);
 
     info("PPTP plugin version %s compiled against pppd %s",
-	 "0.6", PPP_VERSION);
+	 "0.7", PPP_VERSION);
 
     the_channel = &pptp_channel;
     modem = 0;
