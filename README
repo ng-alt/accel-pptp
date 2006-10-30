@@ -22,7 +22,7 @@ Configuration
 If you are beginner in PPTP please read documentation available on POPTOP web site.
 Configuration is same as original pptpd and pptp.
 Exception in configuration of client is:
-replace line 
+replace line in peer config file (for instance, /etc/ppp/peers/my_vpn):
   pty "pptp x.x.x.x ...." 
 to 
   plugin "pptp.so"
@@ -30,7 +30,8 @@ to
   pptp_phone xxxx (optional)
   pptp_window xxx (optional) - this is sliding window size (at current time automatic algorithm is not implemented),
                                set it to  3-10 for low-speed connections,
-                                      to   >10 for hi-speed connection. 
+                                      to   >10 for hi-speed connections. 
+  
   
 Remove lock option in /etc/ppp/options.pptp, /etc/ppp/options.pptpd or similar if it exists.
 
@@ -41,6 +42,11 @@ Warning
 The mtu/mru parametr must be less then 1437
 This driver conflicts with ip_gre driver.
 
+Kernel module
+-------------
+Kernel module is available as separated module and patch for kernel.
+You can use either separated module or patch for kernel.
+There is only patch for 2.6.18 kernel now. If you wish patch for other kernels please mail me.
 
 Please feedback me about your results.
 Good luck.

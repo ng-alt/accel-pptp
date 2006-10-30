@@ -120,6 +120,7 @@ static int pptp_start_server(void)
 {
 	struct sockaddr_pppox src_addr,dst_addr;
 	char *p;
+	
 	for(p=pptp_client;*p && *p!=':'; ++p);
 	if (*p!=':')
 	{
@@ -180,6 +181,8 @@ static int pptp_start_server(void)
 		fatal("PPTP: failed to connect PPTP socket\n");
 		return -1;
 	}
+	
+	sprintf(ppp_devnam,"pptp (%s)",p);
 
 	return pptp_fd;
 }
@@ -258,6 +261,8 @@ static int pptp_start_client(void)
 		fatal("PPTP: failed to connect PPTP socket (%s)\n",strerror(errno));
 		return -1;
 	}
+
+	sprintf(ppp_devnam,"pptp (%s)",pptp_server);
 
 	return pptp_fd;
 }

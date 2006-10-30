@@ -72,6 +72,7 @@ static struct ppp_channel_ops pptp_chan_ops= {
 	.start_xmit = pptp_xmit,
 };
 
+
 /* gre header structure: -------------------------------------------- */
 
 #define PPTP_GRE_PROTO  0x880B
@@ -279,11 +280,8 @@ static int pptp_xmit(struct ppp_channel *chan, struct sk_buff *skb)
 		opt->ack_sent = opt->seq_recv;
 		opt->stat->tx_acks++;
 	}else {
-		if (!opt->seq_sent){
-			char unit[10];
-			sprintf(unit,"ppp%i",ppp_unit_number(&po->chan));
-			create_proc_read_entry(unit,0,proc_dir,read_proc,po);
-		}
+		//if (!opt->seq_sent){
+		//}
 
 		hdr->flags |= PPTP_GRE_FLAG_S;
 		hdr->seq    = htonl(opt->seq_sent++);
@@ -331,6 +329,13 @@ static void ack_work(struct pppox_sock *po)
 	struct pptp_opt *opt=&po->proto.pptp;
 	if (opt->ack_sent != opt->seq_recv)
 		pptp_xmit(&po->chan,0);
+
+	if (!opt->proc){
+			char unit[10];
+			opt->proc=1;
+			sprintf(unit,"ppp%i",ppp_unit_number(&po->chan));
+			create_proc_read_entry(unit,0,proc_dir,read_proc,po);
+	}
 }
 
 static int get_seq(struct sk_buff *skb)
@@ -549,7 +554,11 @@ static int pptp_rcv(struct sk_buff *skb)
 			schedule_delayed_work(&opt->buf_work,opt->stat->rtt/100*HZ/10000);
 		}
 		goto out;
-	}else icmp_send(skb, ICMP_DEST_UNREACH, ICMP_PROT_UNREACH, 0);
+	}else{
+		if (log_level>=1)
+			printk("PPTP: Discarding packet from unknown call_id %i\n",header->call_id);
+		icmp_send(skb, ICMP_DEST_UNREACH, ICMP_PROT_UNREACH, 0);
+	}
 
 drop:
 	kfree_skb(skb);
@@ -775,7 +784,7 @@ static int pptp_release(struct socket *sock)
 		del_chan(po);
 		skb_queue_purge(&opt->skb_buf);
 
-		if (opt->seq_sent){
+		if (opt->proc){
 			char unit[10];
 			sprintf(unit,"ppp%i",ppp_unit_number(&po->chan));
 			remove_proc_entry(unit,proc_dir);

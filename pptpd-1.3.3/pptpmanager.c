@@ -73,7 +73,7 @@ static void connectCall(int clientSocket, int clientNumber);
 static int createHostSocket(int *hostSocket);
 
 /* this end's call identifier */
-uint16_t unique_call_id = 0;
+uint16_t unique_call_id = 1;
 
 /* slots - begin */
 
@@ -194,6 +194,13 @@ static void sigchld_responder(int sig)
   }
 }
 
+static void sigterm_responder(void)
+{
+  int i;
+  for(i=0; i<slot_count; i++)
+    kill(slots[i].pid,SIGTERM);
+}
+
 int pptp_manager(int argc, char **argv)
 {
 	int firstOpen = -1;
@@ -263,7 +270,10 @@ int pptp_manager(int argc, char **argv)
 			if (signum == SIGCHLD)
 				sigchld_responder(signum);
 			else if (signum == SIGTERM)
+			{
+			    sigterm_responder();
 				return signum;
+			}
 		}
 
 		if (FD_ISSET(hostSocket, &connSet)) {	/* A call came! */

@@ -5,7 +5,7 @@
 inherit linux-mod eutils autotools
 
 DESCRIPTION="Point-to-Point Tunnelling Protocol Client/Server for Linux"
-SRC_URI="mirror://sourceforge/accel-pptp/accel-pptp-beta-0.7.2.tar.bz2"
+SRC_URI="mirror://sourceforge/accel-pptp/accel-pptp-beta-0.7.3.tar.bz2"
 HOMEPAGE="http://accel-pptp.sourceforge.net/"
 
 SLOT="0"
@@ -13,9 +13,10 @@ LICENSE="GPL"
 KEYWORDS="~amd64 ~x86"
 IUSE="tcpd server"
 
-S=${WORKDIR}/accel-pptp-beta-0.7.2
+S=${WORKDIR}/accel-pptp-beta-0.7.3
 
-DEPEND=">=net-dialup/ppp-2.4.2
+DEPEND="server? (!net-dialup/pptpd) 
+        >=net-dialup/ppp-2.4.2
         >=virtual/linux-sources-2.6.15
 	tcpd? ( sys-apps/tcp-wrappers )"
 RDEPEND="virtual/modutils"

@@ -138,7 +138,8 @@ struct pptp_opt {
 	int window;
 	__u32 ack_sent, ack_recv;
 	__u32 seq_sent, seq_recv;
-	int pause;
+	int pause:1;
+	int proc:1;
 	spinlock_t skb_buf_lock;
 	struct sk_buff_head skb_buf;
 	struct work_struct ack_work;  //send ack work
