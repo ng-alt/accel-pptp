@@ -41,7 +41,7 @@
 
 #include <asm/uaccess.h>
 
-#define PPTP_DRIVER_VERSION "0.7"
+#define PPTP_DRIVER_VERSION "0.7.4"
 
 MODULE_DESCRIPTION("Point-to-Point Tunneling Protocol for Linux");
 MODULE_AUTHOR("Kozlov D. (xeb@mail.ru)");
@@ -324,9 +324,16 @@ tx_error:
 	return 1;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,20)
+static void ack_work(struct work_struct *work)
+{
+    struct pptp_opt *opt=container_of(work,struct pptp_opt,ack_work);
+    struct pppox_sock *po=container_of(opt,struct pppox_sock,proto.pptp);
+#else
 static void ack_work(struct pppox_sock *po)
 {
 	struct pptp_opt *opt=&po->proto.pptp;
+#endif
 	if (opt->ack_sent != opt->seq_recv)
 		pptp_xmit(&po->chan,0);
 
@@ -377,6 +384,15 @@ static void buf_work(struct pppox_sock *po)
 exit:
 	spin_unlock_bh(&opt->skb_buf_lock);
 }
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,20)
+static void inline _buf_work(struct work_struct *work)
+{
+    struct pptp_opt *opt=container_of(work,struct pptp_opt,buf_work.work);
+    struct pppox_sock *po=container_of(opt,struct pppox_sock,proto.pptp);
+    
+    buf_work(po);
+}
+#endif
 
 
 #define MISSING_WINDOW 20
@@ -867,8 +883,13 @@ static int pptp_create(struct socket *sock)
 	opt->ack_recv=0; opt->ack_sent=-1;
 	skb_queue_head_init(&opt->skb_buf);
 	opt->skb_buf_lock=SPIN_LOCK_UNLOCKED;
+    #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,20)
+        INIT_WORK(&opt->ack_work,(work_func_t)ack_work);
+	INIT_DELAYED_WORK(&opt->buf_work,(work_func_t)_buf_work);
+    #else
 	INIT_WORK(&opt->ack_work,(void(*)(void*))ack_work,sk);
 	INIT_WORK(&opt->buf_work,(void(*)(void*))buf_work,sk);
+    #endif
 	opt->stat=kzalloc(sizeof(*opt->stat),GFP_KERNEL);
 
 	error = 0;

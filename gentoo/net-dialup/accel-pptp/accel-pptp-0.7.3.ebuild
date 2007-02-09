@@ -10,7 +10,7 @@ HOMEPAGE="http://accel-pptp.sourceforge.net/"
 
 SLOT="0"
 LICENSE="GPL"
-KEYWORDS="~amd64 ~x86"
+KEYWORDS="amd64 x86"
 IUSE="tcpd server"
 
 S=${WORKDIR}/accel-pptp-beta-0.7.3
@@ -25,8 +25,16 @@ MODULE_NAMES="pptp(misc:${S}/kernel/driver)"
 BUILD_TARGETS="default"
 BUILD_PARAMS="KDIR=${KERNEL_DIR}"
 CONFIG_CHECK="PPP PPPOE"
-MODULESD_PPTP_EXAMPLES=("pptp min_window=5" "pptp max_window=100")
+MODULESD_PPTP_EXAMPLES=("pptp min_window=5" "pptp max_window=50")
+MODULESD_PPTP_ALIASES=("net-pf-24 pptp")
 
+
+pkg_setup() {
+    linux-mod_pkg_setup
+    if [ ${KV_PATCH} -ge 20 ]; then
+	die "accel-pptp-0.7.3 does not support kernels >=2.6.20"
+    fi 
+}
 
 src_unpack() {
 	unpack ${A}

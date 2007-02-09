@@ -20,6 +20,7 @@
 #include <asm/types.h>
 #include <asm/byteorder.h>
 #include <linux/in.h>
+#include <linux/version.h>
 
 #ifdef  __KERNEL__
 #include <linux/if_ether.h>
@@ -143,7 +144,11 @@ struct pptp_opt {
 	spinlock_t skb_buf_lock;
 	struct sk_buff_head skb_buf;
 	struct work_struct ack_work;  //send ack work
-	struct work_struct buf_work; //check bufferd packets work
+    #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,20)
+	struct delayed_work buf_work; //check bufferd packets work
+    #else
+    struct work_struct buf_work; //check bufferd packets work
+    #endif
 	struct gre_statistics *stat;
 };
 
