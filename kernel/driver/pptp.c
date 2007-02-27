@@ -41,13 +41,14 @@
 
 #include <asm/uaccess.h>
 
-#define PPTP_DRIVER_VERSION "0.7.4"
+#define PPTP_DRIVER_VERSION "0.7.5"
 
 MODULE_DESCRIPTION("Point-to-Point Tunneling Protocol for Linux");
 MODULE_AUTHOR("Kozlov D. (xeb@mail.ru)");
 MODULE_LICENSE("GPL");
 
 static int log_level=0;
+static int log_packets=10;
 static int min_window=5;
 static int max_window=100;
 module_param(min_window,int,5);
@@ -55,11 +56,12 @@ MODULE_PARM_DESC(min_window,"Minimum sliding window size (default=3)");
 module_param(max_window,int,100);
 MODULE_PARM_DESC(max_window,"Maximum sliding window size (default=100)");
 module_param(log_level,int,0);
+module_param(log_packets,int,0);
 
 static struct proc_dir_entry* proc_dir;
 
-#define HASH_SIZE  16
-#define HASH(addr) ((addr^(addr>>4))&0xF)
+#define HASH_SIZE  32
+#define HASH(addr) ((addr^(addr>>3))&0x1F)
 static DEFINE_RWLOCK(chan_lock);
 static struct pppox_sock *chans[HASH_SIZE];
 
@@ -145,11 +147,13 @@ static void add_chan(struct pppox_sock *po)
 
 static void add_free_chan(struct pppox_sock *po)
 {
-	__u16 call_id=1;
+	static __u16 call_id=0;
+	__u16 old_call_id;
 	struct pppox_sock *p;
 
 	write_lock_bh(&chan_lock);
-	for(call_id=1; call_id<65535; call_id++) {
+	for (old_call_id=call_id,call_id++; call_id!=old_call_id; call_id++) {
+		if (call_id==0) continue;
 		for(p=chans[HASH(call_id)]; p; p=p->next)
 			if (p->proto.pptp.src_addr.call_id==call_id)
 				break;
@@ -166,11 +170,17 @@ static void add_free_chan(struct pppox_sock *po)
 static void del_chan(struct pppox_sock *po)
 {
 	struct pppox_sock *p1,*p2;
+	if (!po){
+	    printk("pptp: del_chan: bug: po=NULL\n");
+	    return;
+	}
 	write_lock_bh(&chan_lock);
 	for(p2=NULL,p1=chans[HASH(po->proto.pptp.src_addr.call_id)]; p1 && p1!=po;
 				p2=p1,p1=p1->next);
-	if (p2) p2->next=p1->next;
-	else chans[HASH(po->proto.pptp.src_addr.call_id)]=p1->next;
+	if (p1){
+	    if (p2) p2->next=p1->next;
+	    else chans[HASH(po->proto.pptp.src_addr.call_id)]=p1->next;
+	}
 	write_unlock_bh(&chan_lock);
 }
 
@@ -285,20 +295,22 @@ static int pptp_xmit(struct ppp_channel *chan, struct sk_buff *skb)
 
 		hdr->flags |= PPTP_GRE_FLAG_S;
 		hdr->seq    = htonl(opt->seq_sent++);
-		if (log_level>=2)
-			printk("PPTP: send packet: seq=%i",opt->seq_sent);
+		if (log_level>=3 && opt->seq_sent<=log_packets)
+			printk("PPTP[%i]: send packet: seq=%i",opt->src_addr.call_id,opt->seq_sent);
 		if (opt->ack_sent != opt->seq_recv)	{
 		/* send ack with this message */
 			hdr->ver |= PPTP_GRE_FLAG_A;
 			hdr->ack  = htonl(opt->seq_recv);
 			opt->ack_sent = opt->seq_recv;
-			if (log_level>=2)
+			if (log_level>=3 && opt->seq_sent<=log_packets)
 				printk(" ack=%i",opt->seq_recv);
 		}
 		hdr->payload_len = htons(len);
-		if (log_level>=2)
+		if (log_level>=3 && opt->seq_sent<=log_packets)
 			printk("\n");
 	}
+
+	wake_up(&opt->wait);
 
 	nf_reset(skb);
 
@@ -337,7 +349,7 @@ static void ack_work(struct pppox_sock *po)
 	if (opt->ack_sent != opt->seq_recv)
 		pptp_xmit(&po->chan,0);
 
-	if (!opt->proc){
+	if (!opt->proc && ppp_unit_number(&po->chan)!=-1){
 			char unit[10];
 			opt->proc=1;
 			sprintf(unit,"ppp%i",ppp_unit_number(&po->chan));
@@ -378,6 +390,8 @@ static void buf_work(struct pppox_sock *po)
 			t=get_seq(skb)-1;
 			opt->stat->rx_lost+=t-opt->seq_recv;
 			opt->seq_recv=t;
+			if (log_level>=2)
+				printk("PPTP[%i]: unbuffer packet %i\n",opt->src_addr.call_id,t+1);
 			__pptp_rcv(po,skb,0);
 		}
 	}
@@ -389,7 +403,7 @@ static void inline _buf_work(struct work_struct *work)
 {
     struct pptp_opt *opt=container_of(work,struct pptp_opt,buf_work.work);
     struct pppox_sock *po=container_of(opt,struct pppox_sock,proto.pptp);
-    
+
     buf_work(po);
 }
 #endif
@@ -459,8 +473,8 @@ static int __pptp_rcv(struct pppox_sock *po,struct sk_buff *skb,int new)
 	/* check for expected sequence number */
 	if ((seq == opt->seq_recv + 1) || (!opt->timeout &&
 			(seq > opt->seq_recv + 1 || WRAPPED(seq, opt->seq_recv)))){
-		if ( log_level >= 2 )
-			printk("PPTP: accepting packet %d size=%i (%02x %02x %02x %02x %02x %02x)\n", seq,payload_len,
+		if ( log_level >= 3 && opt->seq_sent<=log_packets)
+			printk("PPTP[%i]: accepting packet %d size=%i (%02x %02x %02x %02x %02x %02x)\n",opt->src_addr.call_id, seq,payload_len,
 				*(payload +0),
 				*(payload +1),
 				*(payload +2),
@@ -493,21 +507,21 @@ static int __pptp_rcv(struct pppox_sock *po,struct sk_buff *skb,int new)
 	* (handle sequence number wrap-around, and try to do it right) */
 	}else if ( seq < opt->seq_recv + 1 || WRAPPED(opt->seq_recv, seq) ){
 		if ( log_level >= 1)
-			printk("PPTP: discarding duplicate or old packet %d (expecting %d)\n",
+			printk("PPTP[%i]: discarding duplicate or old packet %d (expecting %d)\n",opt->src_addr.call_id,
 							seq, opt->seq_recv + 1);
 		opt->stat->rx_underwin++;
 	/* sequence number too high, is it reasonably close? */
 	}else if ( seq < opt->seq_recv + MISSING_WINDOW ||
 						 WRAPPED(seq, opt->seq_recv + MISSING_WINDOW) ){
 		opt->stat->rx_buffered++;
-		if ( log_level >= 1 && new )
-				printk("PPTP: buffering packet %d (expecting %d, lost or reordered)\n",
+		if ( log_level >= 2 && new )
+				printk("PPTP[%i]: buffering packet %d (expecting %d, lost or reordered)\n",opt->src_addr.call_id,
 						seq, opt->seq_recv+1);
 		return 0;
 	/* no, packet must be discarded */
 	}else{
 		if ( log_level >= 1 )
-			printk("PPTP: discarding bogus packet %d (expecting %d)\n",
+			printk("PPTP[%i]: discarding bogus packet %d (expecting %d)\n",opt->src_addr.call_id,
 							seq, opt->seq_recv + 1);
 	}
 drop:
@@ -557,6 +571,10 @@ static int pptp_rcv(struct sk_buff *skb)
 	if ((po=lookup_chan(htons(header->call_id)))) {
 		if (!(sk_pppox(po)->sk_state&PPPOX_BOUND))
 			goto drop;
+		if (!po->chan.ppp){
+			printk("PPTP: received packed, but ppp is down\n");
+			goto drop;
+		}
 		if (__pptp_rcv(po,skb,1))
 			buf_work(po);
 		else{
@@ -655,7 +673,7 @@ static int pptp_connect(struct socket *sock, struct sockaddr *uservaddr,
 	int error=0;
 
 	if (log_level>=1)
-		printk("PPTP: connect: addr=%X call_id=%i\n",
+		printk("PPTP[%i]: connect: addr=%X call_id=%i\n",opt->src_addr.call_id,
 						sp->sa_addr.pptp.sin_addr.s_addr,sp->sa_addr.pptp.call_id);
 
 	lock_sock(sk);
@@ -791,14 +809,20 @@ static int pptp_release(struct socket *sock)
 
 	if (sock_flag(sk, SOCK_DEAD))
 		return -EBADF;
-
+	sk->sk_state = PPPOX_DEAD;
 	po = pppox_sk(sk);
 	opt=&po->proto.pptp;
+
+	if (log_level>=1)
+		printk("PPTP[%i]: release\n",opt->src_addr.call_id);
+
+	wake_up(&opt->wait);
+
 	if (opt->src_addr.sin_addr.s_addr) {
 		cancel_delayed_work(&opt->buf_work);
 		flush_scheduled_work();
-		del_chan(po);
 		skb_queue_purge(&opt->skb_buf);
+		del_chan(po);
 
 		if (opt->proc){
 			char unit[10];
@@ -810,9 +834,6 @@ static int pptp_release(struct socket *sock)
 	pppox_unbind_sock(sk);
 
 	kfree(opt->stat);
-
-	/* Signal the death of the socket. */
-	sk->sk_state = PPPOX_DEAD;
 
 	sock_orphan(sk);
 	sock->sk = NULL;
@@ -891,27 +912,65 @@ static int pptp_create(struct socket *sock)
 	INIT_WORK(&opt->buf_work,(void(*)(void*))buf_work,sk);
     #endif
 	opt->stat=kzalloc(sizeof(*opt->stat),GFP_KERNEL);
+	init_waitqueue_head(&opt->wait);
 
 	error = 0;
 out:
 	return error;
 }
 
+static int pptp_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
+{
+	struct sock *sk = sock->sk;
+	struct pppox_sock *po = pppox_sk(sk);
+	struct pptp_opt *opt=&po->proto.pptp;
+	int res=-EINVAL;
+
+	switch (cmd) {
+	case PPPTPIOWFP:
+		release_sock(sk);
+		res=wait_event_timeout(opt->wait,opt->seq_sent||sk->sk_state == PPPOX_DEAD,arg*HZ);
+		res=(res&&res<HZ)?1:res/HZ;
+		lock_sock(sk);
+		break;
+	}
+
+	return res;
+}
+
+
 
 static struct pppox_proto pppox_pptp_proto = {
     .create	= pptp_create,
-    //.ioctl	= pptp_ioctl,
+    .ioctl	= pptp_ioctl,
     .owner	= THIS_MODULE,
 };
 
 static struct net_protocol net_pptp_protocol = {
 	.handler	= pptp_rcv,
-	//.err_handler	=	ipgre_err,
+	//.err_handler	=	pptp_err,
 };
 
+int ctrl_write_proc(struct file* file,const char __user *buffer,unsigned long count,void *data)
+{
+	int res=count;
+	char *tmp_buf=kmalloc(count+1,GFP_KERNEL);
+	if (copy_from_user(tmp_buf,buffer,count))
+		res=-EFAULT;
+	else{
+		int val;
+		tmp_buf[count]=0;
+		if (sscanf(tmp_buf," log_level = %i",&val)==1) log_level=val;
+		else if (sscanf(tmp_buf," log_packets = %i",&val)==1) log_packets=val;
+		else res=-EINVAL;
+	}
+	kfree(tmp_buf);
+	return res;
+}
 
 static int pptp_init_module(void)
 {
+	struct proc_dir_entry *res;
 	int err=0;
 	printk(KERN_INFO "PPTP driver version " PPTP_DRIVER_VERSION "\n");
 
@@ -936,6 +995,12 @@ static int pptp_init_module(void)
 	if (!proc_dir){
 		printk(KERN_ERR "PPTP: failed to create proc dir\n");
 	}
+	res=create_proc_entry("ctrl",0,proc_dir);
+	if (!res)
+		printk(KERN_ERR "PPTP: failed to create ctrl proc entry\n");
+	else{
+		res->write_proc=ctrl_write_proc;
+	}
 	//console_verbose();
 
 out:
@@ -954,7 +1019,10 @@ static void pptp_exit_module(void)
 	inet_del_protocol(&net_pptp_protocol, IPPROTO_GRE);
 
 	if (proc_dir)
+	{
+		remove_proc_entry("ctrl",proc_dir);
 		remove_proc_entry("pptp",NULL);
+	}
 }
 
 

@@ -52,6 +52,8 @@
 #include "defaults.h"
 // placing net/if.h here fixes build on Solaris
 #include <net/if.h>
+#include <net/ethernet.h>
+#include "if_pppox.h"
 
 static char *ppp_binary = PPP_BINARY;
 static int pptp_logwtmp;
@@ -63,12 +65,14 @@ static pid_t pppfork;                   /* so we can kill it after disconnect */
 /*
  * Global to handle dying
  *
- * I'd be nice if someone could figure out a way to do it 
+ * I'd be nice if someone could figure out a way to do it
  * without the global, but i don't think you can.. -tmk
  */
 #define clientSocket 0		/* in case it changes back to a variable */
 static u_int32_t call_id_pair;	/* call id (to terminate call) */
 int window=10;
+int pptp_sock=-1;
+struct in_addr inetaddrs[2];
 
 /* Needed by this and ctrlpacket.c */
 int pptpctrl_debug = 0;		/* specifies if debugging is on or off */
@@ -114,7 +118,6 @@ int main(int argc, char **argv)
 	socklen_t addrlen;
 	int arg = 1;
 	int flags;
-	struct in_addr inetaddrs[2];
 	char *pppaddrs[2] = { pppLocal, pppRemote };
 
         gargc = argc;
@@ -142,7 +145,7 @@ int main(int argc, char **argv)
 	if (arg < argc) GETARG_INT(unique_call_id);
 	if (arg < argc) GETARG_STRING(ppp_binary);
 	if (arg < argc) GETARG_INT(pptp_logwtmp);
-	
+
 	if (pptpctrl_debug) {
 		if (*pppLocal)
 			syslog(LOG_DEBUG, "CTRL: local address = %s", pppLocal);
@@ -181,7 +184,7 @@ int main(int argc, char **argv)
 		bail(0);	/* NORETURN */
 	}
 
-	
+
 	/* Fiddle with argv */
         my_setproctitle(gargc, gargv, "pptpd [%s]%20c",
             inet_ntoa(addr.sin_addr), ' ');
@@ -245,6 +248,8 @@ static void pptp_handle_ctrl_connection(char **pppaddrs, struct in_addr *inetadd
 
 	unsigned char packet[PPTP_MAX_CTRL_PCKT_SIZE];
 	unsigned char rply_packet[PPTP_MAX_CTRL_PCKT_SIZE];
+
+	struct sockaddr_pppox dst_addr;
 
 	for (;;) {
 
@@ -381,6 +386,22 @@ static void pptp_handle_ctrl_connection(char **pppaddrs, struct in_addr *inetadd
 						pty_fd = -1;
 					}
 				}
+
+				if (setsockopt(pptp_sock,0,PPTP_SO_WINDOW,&window,sizeof(window)))
+					syslog(LOG_WARNING,"CTRL: failed to setsockopt SO_WINDOW\n");
+
+				dst_addr.sa_family=AF_PPPOX;
+				dst_addr.sa_protocol=PX_PROTO_PPTP;
+				dst_addr.sa_addr.pptp.call_id=htons(((struct pptp_out_call_rply *) (rply_packet))->call_id_peer);
+				dst_addr.sa_addr.pptp.sin_addr=inetaddrs[1];
+
+				if (connect(pptp_sock,(struct sockaddr*)&dst_addr,sizeof(dst_addr))){
+					syslog(LOG_ERR,"CTRL: failed to connect PPTP socket\n");
+					exit(-1);
+					break;
+				}
+
+
                                 /* change process title for accounting and status scripts */
                                 my_setproctitle(gargc, gargv,
                                       "pptpd [%s:%04X - %04X]",
@@ -390,30 +411,35 @@ static void pptp_handle_ctrl_connection(char **pppaddrs, struct in_addr *inetadd
 				/* start the call, by launching pppd */
 				syslog(LOG_INFO, "CTRL: Starting call (launching pppd, opening GRE)");
 				pty_fd = startCall(pppaddrs, inetaddrs);
-				sleep(1);
-				break;
-				if (pty_fd > maxfd) maxfd = pty_fd;
-				/* wait for first packet from ppp before proceeding, thus
-				   delaying outgoing call reply, and avoiding traffic 
-				   injection into the pty before echo has been turned off
-				   by pppd */
 				if (PPP_WAIT) {
-					fd_set pty_fds;
+					/*fd_set pty_fds;
 					FD_ZERO(&pty_fds);
-					FD_SET(pty_fd, &pty_fds);
+					FD_SET(pptp_sock, &pty_fds);
 					idleTime.tv_sec = PPP_WAIT;
 					idleTime.tv_usec = 0;
-					switch (select(maxfd + 1, &pty_fds, NULL, NULL, &idleTime)) {
+					switch (select(pptp_sock + 1, NULL, &pty_fds, NULL, &idleTime)) {
 					case -1:
-						syslog(LOG_ERR, 
+						syslog(LOG_ERR,
 						       "CTRL: pty select() failed, ignoring");
 						break;
 					case 0:
-						syslog(LOG_ERR, 
+						syslog(LOG_ERR,
 						       "CTRL: timeout waiting for first packet from our pppd");
+						break;
+					}*/
+					switch(ioctl(pptp_sock,PPPTPIOWFP,PPP_WAIT)){
+					case -1:
+						syslog(LOG_ERR,
+						       "CTRL: waiting for first packet failed, ignoring");
+						break;
+					case 0:
+						syslog(LOG_ERR,
+						       "CTRL: timeout waiting for first packet");
 						break;
 					}
 				}
+				close(pptp_sock);
+				pptp_sock=-1;
 				//if ((gre_fd = pptp_gre_init(call_id_pair, pty_fd, inetaddrs)) > maxfd)
 				//	maxfd = gre_fd;
 				break;
@@ -589,7 +615,7 @@ static int startCall(char **pppaddrs, struct in_addr *inetaddrs)
 		syslog(LOG_ERR, "CTRL: PPPD launch failed! (launch_pppd did not fork)");
 		_exit(1);
 	}
-	
+
 	return -1;
 }
 
@@ -615,8 +641,8 @@ static void launch_pppd(char **pppaddrs, struct in_addr *inetaddrs)
 	pppd_argv[an++] = ppp_binary;
 
 	if (pptpctrl_debug) {
-		syslog(LOG_DEBUG, 
-		       "CTRL (PPPD Launcher): program binary = %s", 
+		syslog(LOG_DEBUG,
+		       "CTRL (PPPD Launcher): program binary = %s",
 		       pppd_argv[an - 1]);
 	}
 
@@ -693,7 +719,7 @@ static void launch_pppd(char **pppaddrs, struct in_addr *inetaddrs)
 		pppd_argv[an++] = "file";
 		pppd_argv[an++] = pppdxfig;
 	}
-	
+
 	/* If a speed has been specified, use it
 	 * if not, use "smart" default (defaults.h)
 	 */
@@ -709,7 +735,7 @@ static void launch_pppd(char **pppaddrs, struct in_addr *inetaddrs)
 		if (*pppaddrs[1])
 			syslog(LOG_DEBUG, "CTRL (PPPD Launcher): remote address = %s", pppaddrs[1]);
 	}
-	
+
 	if (*pppaddrs[0] || *pppaddrs[1]) {
 		char pppInterfaceIPs[33];
 		sprintf(pppInterfaceIPs, "%s:%s", pppaddrs[0], pppaddrs[1]);
@@ -728,19 +754,14 @@ static void launch_pppd(char **pppaddrs, struct in_addr *inetaddrs)
                  pppd_argv[an++] = "pptpd-original-ip";
                  pppd_argv[an++] = inet_ntoa(inetaddrs[1]);
         }
-	
+
 	pppd_argv[an++] = "plugin";
 	pppd_argv[an++] = "pptp.so";
 	pppd_argv[an++] = "pptp_client";
-	strcpy(tmp,inet_ntoa(inetaddrs[0]));
-	strcat(tmp,":");
-	strcat(tmp,inet_ntoa(inetaddrs[1]));
+	strcpy(tmp,inet_ntoa(inetaddrs[1]));
 	pppd_argv[an++] = strdup(tmp);
-	pppd_argv[an++] = "pptp_call_info";
-	sprintf(tmp,"%u",call_id_pair);
-	pppd_argv[an++] = strdup(tmp);
-	pppd_argv[an++] = "pptp_window";
-	sprintf(tmp,"%u",window);
+	pppd_argv[an++] = "pptp_sock";
+	sprintf(tmp,"%u",pptp_sock);
 	pppd_argv[an++] = strdup(tmp);
 	pppd_argv[an++] = "nodetach";
 
@@ -752,7 +773,7 @@ static void launch_pppd(char **pppaddrs, struct in_addr *inetaddrs)
 	/* run pppd now */
 	execvp(pppd_argv[0], pppd_argv);
 	/* execvp() failed */
-	syslog(LOG_ERR, 
+	syslog(LOG_ERR,
 	       "CTRL (PPPD Launcher): Failed to launch PPP daemon. %s",
 	       strerror(errno));
 }

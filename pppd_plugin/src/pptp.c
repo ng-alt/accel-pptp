@@ -47,8 +47,8 @@
 #include "pppd/patchlevel.h"
 
 #include "pptp_callmgr.h"
-#include <linux/if.h>
-#include <linux/if_ether.h>
+#include <net/if.h>
+#include <net/ethernet.h>
 #include "if_pppox.h"
 
 #include <stdio.h>
@@ -65,7 +65,7 @@ extern int new_style_driver;
 char *pptp_server = NULL;
 char *pptp_client = NULL;
 char *pptp_phone = NULL;
-int pptp_call_id_pair=0;
+int pptp_sock=-1;
 int pptp_window=10;
 static int pptp_timeout=10000;
 struct in_addr localbind = { INADDR_NONE };
@@ -86,8 +86,8 @@ static option_t Options[] =
       "PPTP Server" },
     { "pptp_client", o_string, &pptp_client,
       "PPTP Client" },
-    { "pptp_call_info",o_int, &pptp_call_id_pair,
-      "PPTP call info" },
+    { "pptp_sock",o_int, &pptp_sock,
+      "PPTP socket" },
     { "pptp_phone", o_string, &pptp_phone,
       "PPTP Phone number" },
     { "pptp_window", o_int, &pptp_window,
@@ -118,71 +118,8 @@ struct channel pptp_channel = {
 
 static int pptp_start_server(void)
 {
-	struct sockaddr_pppox src_addr,dst_addr;
-	char *p;
-	
-	for(p=pptp_client;*p && *p!=':'; ++p);
-	if (*p!=':')
-	{
-		fatal("PPTP: pptp_client option must be in format local_ip:remote_ip\n");
-		return -1;
-	}
-	*p=0; p++;
-	//struct hostent *hostinfo;
-
-	/*hostinfo=gethostbyname(pptp_client);
-  if (!hostinfo)
-	{
-		fatal("PPTP: Unknown host %s\n", pptp_server);
-		return -1;
-	}*/
-	if (!inet_aton(p,&dst_addr.sa_addr.pptp.sin_addr))
-	{
-		fatal("PPTP: invalid ip %s\n",p);
-		return -1;
-	}
-	if (!inet_aton(pptp_client,&src_addr.sa_addr.pptp.sin_addr))
-	{
-		fatal("PPTP: invalid ip %s\n",pptp_client);
-		return -1;
-	}
-
-	if (!pptp_call_id_pair)
-	{
-		fatal("PPTP: no pptp_call_info specified\n");
-		return -1;
-	}
-
-	src_addr.sa_family=AF_PPPOX;
-	src_addr.sa_protocol=PX_PROTO_PPTP;
-	src_addr.sa_addr.pptp.call_id=htons(pptp_call_id_pair&0xffff);
-
-	dst_addr.sa_family=AF_PPPOX;
-	dst_addr.sa_protocol=PX_PROTO_PPTP;
-	dst_addr.sa_addr.pptp.call_id=htons(pptp_call_id_pair>>16);
-
-	pptp_fd=socket(AF_PPPOX,SOCK_STREAM,PX_PROTO_PPTP);
-	if (pptp_fd<0)
-	{
-		fatal("PPTP: failed to create PPTP socket\n");
-		return -1;
-	}
-	if (setsockopt(pptp_fd,0,PPTP_SO_WINDOW,&pptp_window,sizeof(pptp_window)))
-	{
-		warn("PPTP: failed to setsockopt\n");
-	}
-	if (bind(pptp_fd,(struct sockaddr*)&src_addr,sizeof(src_addr)))
-	{
-		fatal("PPTP: failed to bind PPTP socket\n");
-		return -1;
-	}
-	if (connect(pptp_fd,(struct sockaddr*)&dst_addr,sizeof(dst_addr)))
-	{
-		fatal("PPTP: failed to connect PPTP socket\n");
-		return -1;
-	}
-	
-	sprintf(ppp_devnam,"pptp (%s)",p);
+	pptp_fd=pptp_sock;
+	sprintf(ppp_devnam,"pptp (%s)",pptp_client);
 
 	return pptp_fd;
 }
@@ -396,7 +333,7 @@ void plugin_init(void)
     add_options(Options);
 
     info("PPTP plugin version %s compiled against pppd %s",
-	 "0.7", PPP_VERSION);
+	 "0.7.5", PPP_VERSION);
 
     the_channel = &pptp_channel;
     modem = 0;

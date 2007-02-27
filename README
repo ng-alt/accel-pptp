@@ -3,6 +3,9 @@ Overview
 The ACCEL-PPTP is PPTP client/server based on POPTOP (http://www.poptop.org) and PPTPCLIENT (http://pptpclient.sourceforge.net).
 ACCEL-PPTP uses kernel module to increase performance and decrease system usage.
 For more documentation about PPTP visit POPTOP web site.
+ACCEL-PPTP was successfully tested on about 250 connections and system usage has been decreased by ~50% on comparisons with the
+original poptop server.
+
 
 Requirment
 ----------
@@ -32,21 +35,30 @@ to
                                set it to  3-10 for low-speed connections,
                                       to   >10 for hi-speed connections. 
   
-  
 Remove lock option in /etc/ppp/options.pptp, /etc/ppp/options.pptpd or similar if it exists.
 
 See configuration example in example directory.
 
-Warning
--------
-The mtu/mru parametr must be less then 1437
-This driver conflicts with ip_gre driver.
+
+Warning !!!
+-----------
+The mtu/mru parametr must be less then 1437.
+This driver conflicts with ip_gre driver (in kernel), so make sure that ip_gre is not built-in or loaded at run time.
+Never mix connections of accel-pptp and original pptpd, before starting accel-pptp make sure that no connections
+of original pptpd exists.
+
 
 Kernel module
 -------------
-Kernel module is available as separated module and patch for kernel.
+Kernel module is available as separated module and as patch for kernel.
 You can use either separated module or patch for kernel.
 There is only patch for 2.6.18 kernel now. If you wish patch for other kernels please mail me.
+
+
+Thanks
+------
+Thanks to Kirill Yushkov for debug support.
+
 
 Please feedback me about your results.
 Good luck.

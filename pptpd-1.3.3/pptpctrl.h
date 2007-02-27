@@ -11,5 +11,7 @@
 
 extern int pptpctrl_debug;
 extern int window;
+extern struct in_addr inetaddrs[2];
+extern int pptp_sock;
 
 #endif	/* !_PPTPD_PPTPCTRL_H */

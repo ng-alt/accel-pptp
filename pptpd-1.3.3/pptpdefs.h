@@ -75,7 +75,7 @@
 #define MAX_ECHO_WAIT			60
 
 /* how long to wait for ppp to begin negotiation (seconds) */
-#define PPP_WAIT			10
+#define PPP_WAIT			30
 
 #define RESERVED			0x0000
 

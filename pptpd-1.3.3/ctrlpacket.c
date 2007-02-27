@@ -31,6 +31,10 @@
 #include "pptpctrl.h"
 #include "ctrlpacket.h"
 
+#include <net/if.h>
+#include <net/ethernet.h>
+#include "if_pppox.h"
+
 #ifndef HAVE_STRERROR
 #include "compat.h"
 #endif
@@ -649,26 +653,31 @@ static u_int16_t _pac_init = 0;
  */
 u_int16_t getcall()
 {
-	static u_int16_t i = 0;
-	extern u_int16_t unique_call_id;
+	struct sockaddr_pppox src_addr;
+	socklen_t addrlen;
 
-	/* Start with a random Call ID.  This is to allocate unique
-	 * Call ID's across multiple TCP PPTP connections.  In this
-	 * way remote clients masqueraded by a firewall will put
-	 * unique peer call ID's into GRE packets that will have the
-	 * same source IP address of the firewall. */
+	src_addr.sa_family=AF_PPPOX;
+	src_addr.sa_protocol=PX_PROTO_PPTP;
+	src_addr.sa_addr.pptp.call_id=0;
+	src_addr.sa_addr.pptp.sin_addr=inetaddrs[0];
 
-	if (!i) {
-		if (unique_call_id == 0xFFFF) {
-			struct timeval tv;
-			if (gettimeofday(&tv, NULL) == 0) {
-				i = ((tv.tv_sec & 0x0FFF) << 4) + 
-				    (tv.tv_usec >> 16);
-			}
-		} else {
-			i = unique_call_id;
-		}
+	if (pptp_sock!=-1) close(pptp_sock);
+
+	pptp_sock=socket(AF_PPPOX,SOCK_STREAM,PX_PROTO_PPTP);
+	if (pptp_sock<0)
+	{
+		syslog(LOG_ERR,"CTRL: failed to create PPTP socket\n");
+		exit(-1);
 	}
+	if (bind(pptp_sock,(struct sockaddr*)&src_addr,sizeof(src_addr)))
+	{
+		syslog(LOG_ERR,"CTRL: failed to bind PPTP socket\n");
+		close(pptp_sock);
+		pptp_sock=-1;
+		exit(-1);
+	}
+	addrlen=sizeof(src_addr);
+	getsockname(pptp_sock,(struct sockaddr*)&src_addr,&addrlen);
 
 	if(!_pac_init) {
 		_pac_call_id = htons(-1);
@@ -676,8 +685,8 @@ u_int16_t getcall()
 	}
 	if(_pac_call_id != htons(-1))
 		syslog(LOG_ERR, "CTRL: Asked to allocate call id when call open, not handled well");
-	_pac_call_id = htons(i);
-	i++;
+
+	_pac_call_id = htons(src_addr.sa_addr.pptp.call_id) ;
 	return _pac_call_id;
 }
 
@@ -691,6 +700,11 @@ u_int16_t getcall()
 u_int16_t freecall()
 {
 	u_int16_t ret;
+
+	if (pptp_sock!=-1){
+		close(pptp_sock);
+		pptp_sock=-1;
+	}
 
 	if(!_pac_init) {
 		_pac_call_id = htons(-1);
