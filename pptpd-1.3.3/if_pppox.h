@@ -152,6 +152,8 @@ struct pptp_opt {
   #endif
 	struct gre_statistics *stat;
 	wait_queue_head_t	wait;
+	spinlock_t xmit_lock;
+	spinlock_t rcv_lock;
 };
 
 #include <net/sock.h>

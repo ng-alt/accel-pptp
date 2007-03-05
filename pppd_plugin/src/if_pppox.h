@@ -19,6 +19,7 @@
 
 #include <asm/types.h>
 #include <asm/byteorder.h>
+#include <linux/version.h>
 
 #ifdef  __KERNEL__
 #include <linux/in.h>
@@ -77,6 +78,7 @@ struct sockaddr_pppox {
 #define PPPOEIOCSFWD	_IOW(0xB1 ,0, size_t)
 #define PPPOEIOCDFWD	_IO(0xB1 ,1)
 /*#define PPPOEIOCGFWD	_IOWR(0xB1,2, size_t)*/
+#define PPPTPIOWFP  	_IOWR(0xB1 ,2,size_t)
 
 /* Codes to identify message types */
 #define PADI_CODE	0x09
@@ -118,6 +120,7 @@ struct pppoe_hdr {
 	struct pppoe_tag tag[0];
 } __attribute__ ((packed));
 
+
 /* Socket options */
 #define PPTP_SO_TIMEOUT 1
 #define PPTP_SO_WINDOW  2
@@ -137,32 +140,20 @@ struct pptp_opt {
 	int window;
 	__u32 ack_sent, ack_recv;
 	__u32 seq_sent, seq_recv;
-	int pause;
-	rwlock_t skb_buf_lock;
+	int pause:1;
+	int proc:1;
+	spinlock_t skb_buf_lock;
 	struct sk_buff_head skb_buf;
 	struct work_struct ack_work;  //send ack work
-	struct work_struct buf_work; //check bufferd packets work
-
-  /* statistics for GRE receive */
-  unsigned int rx_accepted;  // data packet accepted
-  unsigned int rx_lost;      // data packet did not arrive before timeout
-  unsigned int rx_underwin;  // data packet was under window (arrived too late
-                             // or duplicate packet)
-  unsigned int rx_buffered;  // data packet arrived earlier than expected,
-                             // packet(s) before it were lost or reordered
-  unsigned int rx_errors;    // OS error on receive
-  unsigned int rx_truncated; // truncated packet
-  unsigned int rx_invalid;   // wrong protocol or invalid flags
-  unsigned int rx_acks;      // acknowledgement only
-
-  /* statistics for GRE transmit */
-  unsigned int tx_sent;      // data packet sent
-  unsigned int tx_failed;    //
-  unsigned int tx_acks;      // sent packet with just ACK
-
-  __u32 pt_seq;
-  struct timeval pt_time;
-  unsigned int rtt;
+  #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,20)
+	struct delayed_work buf_work; //check bufferd packets work
+  #else
+  struct work_struct buf_work; //check bufferd packets work
+  #endif
+	struct gre_statistics *stat;
+	wait_queue_head_t	wait;
+	spinlock_t xmit_lock;
+	spinlock_t rcv_lock;
 };
 
 #include <net/sock.h>

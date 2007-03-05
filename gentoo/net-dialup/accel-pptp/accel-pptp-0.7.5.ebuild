@@ -5,7 +5,7 @@
 inherit linux-mod eutils autotools
 
 DESCRIPTION="Point-to-Point Tunnelling Protocol Client/Server for Linux"
-SRC_URI="mirror://sourceforge/accel-pptp/accel-pptp-0.7.5.tar.bz2"
+SRC_URI="mirror://sourceforge/accel-pptp/${P}.tar.bz2"
 HOMEPAGE="http://accel-pptp.sourceforge.net/"
 
 SLOT="0"

@@ -41,7 +41,7 @@
 
 #include <asm/uaccess.h>
 
-#define PPTP_DRIVER_VERSION "0.7.5"
+#define PPTP_DRIVER_VERSION "0.7.6"
 
 MODULE_DESCRIPTION("Point-to-Point Tunneling Protocol for Linux");
 MODULE_AUTHOR("Kozlov D. (xeb@mail.ru)");
@@ -148,12 +148,11 @@ static void add_chan(struct pppox_sock *po)
 static void add_free_chan(struct pppox_sock *po)
 {
 	static __u16 call_id=0;
-	__u16 old_call_id;
 	struct pppox_sock *p;
 
 	write_lock_bh(&chan_lock);
-	for (old_call_id=call_id,call_id++; call_id!=old_call_id; call_id++) {
-		if (call_id==0) continue;
+	while (1) {
+		if (++call_id==0) continue;
 		for(p=chans[HASH(call_id)]; p; p=p->next)
 			if (p->proto.pptp.src_addr.call_id==call_id)
 				break;
@@ -170,10 +169,7 @@ static void add_free_chan(struct pppox_sock *po)
 static void del_chan(struct pppox_sock *po)
 {
 	struct pppox_sock *p1,*p2;
-	if (!po){
-	    printk("pptp: del_chan: bug: po=NULL\n");
-	    return;
-	}
+
 	write_lock_bh(&chan_lock);
 	for(p2=NULL,p1=chans[HASH(po->proto.pptp.src_addr.call_id)]; p1 && p1!=po;
 				p2=p1,p1=p1->next);
@@ -199,10 +195,13 @@ static int pptp_xmit(struct ppp_channel *chan, struct sk_buff *skb)
 	struct iphdr  *iph;			/* Our new IP header */
 	int    max_headroom;			/* The extra header space needed */
 
+	spin_lock_bh(&opt->xmit_lock);
 
-	if (skb && opt->seq_sent-opt->ack_recv>opt->window){
+	if (!skb){
+	    if (opt->ack_sent == opt->seq_recv) goto exit;
+	}else if (opt->seq_sent-opt->ack_recv>opt->window){
 		opt->pause=1;
-		return 0;
+		goto exit;
 	}
 
 	{
@@ -328,12 +327,17 @@ static int pptp_xmit(struct ppp_channel *chan, struct sk_buff *skb)
 		}
 	}else goto tx_error;
 
+	spin_unlock_bh(&opt->xmit_lock);
 	return 1;
 
 tx_error:
 	opt->stat->tx_failed++;
 	if (!len) dev_kfree_skb(skb);
+	spin_unlock_bh(&opt->xmit_lock);
 	return 1;
+exit:
+	spin_unlock_bh(&opt->xmit_lock);
+	return 0;	
 }
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,20)
@@ -346,8 +350,7 @@ static void ack_work(struct pppox_sock *po)
 {
 	struct pptp_opt *opt=&po->proto.pptp;
 #endif
-	if (opt->ack_sent != opt->seq_recv)
-		pptp_xmit(&po->chan,0);
+	pptp_xmit(&po->chan,0);
 
 	if (!opt->proc && ppp_unit_number(&po->chan)!=-1){
 			char unit[10];
@@ -420,6 +423,8 @@ static int __pptp_rcv(struct pppox_sock *po,struct sk_buff *skb,int new)
 	__u8 *payload;
 	struct pptp_gre_header *header;
 
+	spin_lock_bh(&opt->rcv_lock);
+
 	header = (struct pptp_gre_header *)(skb->data);
 
 	if (new){
@@ -441,6 +446,7 @@ static int __pptp_rcv(struct pppox_sock *po,struct sk_buff *skb,int new)
 					if (opt->stat->rtt>opt->timeout) opt->stat->rtt=opt->timeout;
 					opt->stat->pt_seq=0;
 				}
+				
 				if (opt->pause){
 					opt->pause=0;
 					ppp_output_wakeup(&po->chan);
@@ -502,6 +508,7 @@ static int __pptp_rcv(struct pppox_sock *po,struct sk_buff *skb,int new)
 
 		ppp_input(&po->chan,skb);
 
+		spin_unlock_bh(&opt->rcv_lock);
 		return 1;
 	/* out of order, check if the number is too low and discard the packet.
 	* (handle sequence number wrap-around, and try to do it right) */
@@ -517,6 +524,7 @@ static int __pptp_rcv(struct pppox_sock *po,struct sk_buff *skb,int new)
 		if ( log_level >= 2 && new )
 				printk("PPTP[%i]: buffering packet %d (expecting %d, lost or reordered)\n",opt->src_addr.call_id,
 						seq, opt->seq_recv+1);
+		spin_unlock_bh(&opt->rcv_lock);
 		return 0;
 	/* no, packet must be discarded */
 	}else{
@@ -526,6 +534,7 @@ static int __pptp_rcv(struct pppox_sock *po,struct sk_buff *skb,int new)
 	}
 drop:
 	kfree_skb(skb);
+	spin_unlock_bh(&opt->rcv_lock);
 	return -1;
 }
 
@@ -588,7 +597,7 @@ static int pptp_rcv(struct sk_buff *skb)
 			schedule_delayed_work(&opt->buf_work,opt->stat->rtt/100*HZ/10000);
 		}
 		goto out;
-	}else{
+	}else if (htons(header->call_id)>=32768) {
 		if (log_level>=1)
 			printk("PPTP: Discarding packet from unknown call_id %i\n",header->call_id);
 		icmp_send(skb, ICMP_DEST_UNREACH, ICMP_PROT_UNREACH, 0);
@@ -903,7 +912,7 @@ static int pptp_create(struct socket *sock)
 	opt->seq_sent=0; opt->seq_recv=-1;
 	opt->ack_recv=0; opt->ack_sent=-1;
 	skb_queue_head_init(&opt->skb_buf);
-	opt->skb_buf_lock=SPIN_LOCK_UNLOCKED;
+	spin_lock_init(&opt->skb_buf_lock);
     #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,20)
         INIT_WORK(&opt->ack_work,(work_func_t)ack_work);
 	INIT_DELAYED_WORK(&opt->buf_work,(work_func_t)_buf_work);
@@ -913,6 +922,8 @@ static int pptp_create(struct socket *sock)
     #endif
 	opt->stat=kzalloc(sizeof(*opt->stat),GFP_KERNEL);
 	init_waitqueue_head(&opt->wait);
+	spin_lock_init(&opt->xmit_lock);
+	spin_lock_init(&opt->rcv_lock);
 
 	error = 0;
 out:
@@ -992,15 +1003,12 @@ static int pptp_init_module(void)
 	}
 
 	proc_dir=proc_mkdir("pptp",NULL);
-	if (!proc_dir){
-		printk(KERN_ERR "PPTP: failed to create proc dir\n");
-	}
-	res=create_proc_entry("ctrl",0,proc_dir);
-	if (!res)
-		printk(KERN_ERR "PPTP: failed to create ctrl proc entry\n");
-	else{
-		res->write_proc=ctrl_write_proc;
-	}
+	if (proc_dir){
+	    proc_dir->owner=THIS_MODULE;
+	    res=create_proc_entry("ctrl",0,proc_dir);
+	    if (!res)printk(KERN_ERR "PPTP: failed to create ctrl proc entry\n");
+	    else res->write_proc=ctrl_write_proc;
+	}else printk(KERN_ERR "PPTP: failed to create proc dir\n");
 	//console_verbose();
 
 out:

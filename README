@@ -3,7 +3,7 @@ Overview
 The ACCEL-PPTP is PPTP client/server based on POPTOP (http://www.poptop.org) and PPTPCLIENT (http://pptpclient.sourceforge.net).
 ACCEL-PPTP uses kernel module to increase performance and decrease system usage.
 For more documentation about PPTP visit POPTOP web site.
-ACCEL-PPTP was successfully tested on about 250 connections and system usage has been decreased by ~50% on comparisons with the
+ACCEL-PPTP was successfully tested on about 650 connections and system usage has been decreased by ~50% on comparisons with the
 original poptop server.
 
 
