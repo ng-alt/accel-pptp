@@ -48,6 +48,7 @@
 #define PIDFILE_DEFAULT			"/var/run/pptpd.pid"
 
 #define STIMEOUT_DEFAULT		10 /* seconds */
+#define PTIMEOUT_DEFAULT		1000 /* msec */
 
 /* Location of binaries */
 
@@ -69,6 +70,7 @@
 #define LISTEN_KEYWORD			"listen"
 #define PIDFILE_KEYWORD			"pidfile"
 #define STIMEOUT_KEYWORD		"stimeout"
+#define PTIMEOUT_KEYWORD		"ptimeout"
 #define NOIPPARAM_KEYWORD		"noipparam"
 #define PPP_BINARY_KEYWORD		"ppp"
 #define LOGWTMP_KEYWORD			"logwtmp"

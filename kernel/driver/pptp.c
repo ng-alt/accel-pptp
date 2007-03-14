@@ -41,7 +41,7 @@
 
 #include <asm/uaccess.h>
 
-#define PPTP_DRIVER_VERSION "0.7.6"
+#define PPTP_DRIVER_VERSION "0.7.7"
 
 MODULE_DESCRIPTION("Point-to-Point Tunneling Protocol for Linux");
 MODULE_AUTHOR("Kozlov D. (xeb@mail.ru)");
@@ -49,6 +49,7 @@ MODULE_LICENSE("GPL");
 
 static int log_level=0;
 static int log_packets=10;
+static int rx_stop=0;
 static int min_window=5;
 static int max_window=100;
 module_param(min_window,int,5);
@@ -74,6 +75,11 @@ static struct ppp_channel_ops pptp_chan_ops= {
 	.start_xmit = pptp_xmit,
 };
 
+
+#define MISSING_WINDOW 20
+#define WRAPPED( curseq, lastseq) \
+    ((((curseq) & 0xffffff00) == 0) && \
+     (((lastseq) & 0xffffff00 ) == 0xffffff00))
 
 /* gre header structure: -------------------------------------------- */
 
@@ -189,6 +195,7 @@ static int pptp_xmit(struct ppp_channel *chan, struct sk_buff *skb)
 	unsigned int header_len=sizeof(*hdr);
 	int len=skb?skb->len:0;
 	int err=0;
+	int window;
 
 	struct rtable *rt;     			/* Route to the other host */
 	struct net_device *tdev;			/* Device to other host */
@@ -196,11 +203,14 @@ static int pptp_xmit(struct ppp_channel *chan, struct sk_buff *skb)
 	int    max_headroom;			/* The extra header space needed */
 
 	spin_lock_bh(&opt->xmit_lock);
+	
+	window=WRAPPED(opt->ack_recv,opt->seq_sent)?(__u32)0xffffffff-opt->seq_sent+opt->ack_recv:opt->seq_sent-opt->ack_recv;
 
 	if (!skb){
 	    if (opt->ack_sent == opt->seq_recv) goto exit;
-	}else if (opt->seq_sent-opt->ack_recv>opt->window){
-		opt->pause=1;
+	}else if (window>opt->window){
+		__set_bit(PPTP_FLAG_PAUSE,(unsigned long*)&opt->flags);
+		schedule_delayed_work(&opt->ack_timeout_work,opt->stat->rtt/100*HZ/10000);
 		goto exit;
 	}
 
@@ -337,7 +347,7 @@ tx_error:
 	return 1;
 exit:
 	spin_unlock_bh(&opt->xmit_lock);
-	return 0;	
+	return 0;
 }
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,20)
@@ -352,13 +362,38 @@ static void ack_work(struct pppox_sock *po)
 #endif
 	pptp_xmit(&po->chan,0);
 
-	if (!opt->proc && ppp_unit_number(&po->chan)!=-1){
+	if (!test_and_set_bit(PPTP_FLAG_PROC,(unsigned long*)&opt->flags)){
+		if (ppp_unit_number(&po->chan)!=-1){
 			char unit[10];
-			opt->proc=1;
 			sprintf(unit,"ppp%i",ppp_unit_number(&po->chan));
 			create_proc_read_entry(unit,0,proc_dir,read_proc,po);
+		}else clear_bit(PPTP_FLAG_PROC,(unsigned long*)&opt->flags);
 	}
 }
+
+
+static void ack_timeout_work(struct pppox_sock *po)
+{
+    struct pptp_opt *opt=&po->proto.pptp;
+    int paused;
+    
+    spin_lock_bh(&opt->xmit_lock);
+    paused=__test_and_clear_bit(PPTP_FLAG_PAUSE,(unsigned long*)&opt->flags);
+    if (paused){
+	if (opt->window>min_window) --opt->window;
+	opt->ack_recv=opt->seq_sent;
+    }
+    spin_unlock_bh(&opt->xmit_lock);
+    if (paused) ppp_output_wakeup(&po->chan);
+}
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,20)
+static void _ack_timeout_work(struct work_struct *work)
+{
+    struct pptp_opt *opt=container_of(work,struct pptp_opt,ack_timeout_work.work);
+    struct pppox_sock *po=container_of(opt,struct pppox_sock,proto.pptp);
+    ack_timeout_work(po);
+}
+#endif
 
 static int get_seq(struct sk_buff *skb)
 {
@@ -379,8 +414,8 @@ static void buf_work(struct pppox_sock *po)
 	struct pptp_opt *opt=&po->proto.pptp;
 	unsigned int t;
 
+	spin_lock_bh(&opt->rcv_lock);
 	do_gettimeofday(&tv1);
-	spin_lock_bh(&opt->skb_buf_lock);
 	while((skb=skb_dequeue(&opt->skb_buf))){
 		if (!__pptp_rcv(po,skb,0)){
 			skb_get_timestamp(skb,&tv2);
@@ -399,7 +434,7 @@ static void buf_work(struct pppox_sock *po)
 		}
 	}
 exit:
-	spin_unlock_bh(&opt->skb_buf_lock);
+	spin_unlock_bh(&opt->rcv_lock);
 }
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,20)
 static void inline _buf_work(struct work_struct *work)
@@ -412,10 +447,6 @@ static void inline _buf_work(struct work_struct *work)
 #endif
 
 
-#define MISSING_WINDOW 20
-#define WRAPPED( curseq, lastseq) \
-    ((((curseq) & 0xffffff00) == 0) && \
-     (((lastseq) & 0xffffff00 ) == 0xffffff00))
 static int __pptp_rcv(struct pppox_sock *po,struct sk_buff *skb,int new)
 {
 	struct pptp_opt *opt=&po->proto.pptp;
@@ -423,19 +454,34 @@ static int __pptp_rcv(struct pppox_sock *po,struct sk_buff *skb,int new)
 	__u8 *payload;
 	struct pptp_gre_header *header;
 
-	spin_lock_bh(&opt->rcv_lock);
-
 	header = (struct pptp_gre_header *)(skb->data);
+
+	if (log_level>=4) printk("PPTP[%i]: __pptv_rcv %i\n",opt->src_addr.call_id,new);
 
 	if (new){
 		/* test if acknowledgement present */
 		if (PPTP_GRE_IS_A(header->ver)){
+				int paused;
 				__u32 ack = (PPTP_GRE_IS_S(header->flags))?
 						header->ack:header->seq; /* ack in different place if S = 0 */
+				
 				ack = ntohl( ack);
+
+				spin_lock_bh(&opt->xmit_lock);
+
 				if (ack > opt->ack_recv) opt->ack_recv = ack;
 				/* also handle sequence number wrap-around  */
 				if (WRAPPED(ack,opt->ack_recv)) opt->ack_recv = ack;
+
+				paused=__test_and_clear_bit(PPTP_FLAG_PAUSE,(unsigned long*)&opt->flags);
+				spin_unlock_bh(&opt->xmit_lock);
+				
+				if (paused){
+				    cancel_delayed_work(&opt->ack_timeout_work);
+				    ppp_output_wakeup(&po->chan);
+				}else if (opt->window<opt->max_window) ++opt->window;
+
+
 				if (opt->stat->pt_seq && opt->ack_recv > opt->stat->pt_seq){
 					struct timeval tv;
 					unsigned int rtt;
@@ -446,12 +492,7 @@ static int __pptp_rcv(struct pppox_sock *po,struct sk_buff *skb,int new)
 					if (opt->stat->rtt>opt->timeout) opt->stat->rtt=opt->timeout;
 					opt->stat->pt_seq=0;
 				}
-				
-				if (opt->pause){
-					opt->pause=0;
-					ppp_output_wakeup(&po->chan);
-				}
-		}
+		}else ack_timeout_work(po);
 
 		/* test if payload present */
 		if (!PPTP_GRE_IS_S(header->flags)){
@@ -508,7 +549,6 @@ static int __pptp_rcv(struct pppox_sock *po,struct sk_buff *skb,int new)
 
 		ppp_input(&po->chan,skb);
 
-		spin_unlock_bh(&opt->rcv_lock);
 		return 1;
 	/* out of order, check if the number is too low and discard the packet.
 	* (handle sequence number wrap-around, and try to do it right) */
@@ -518,23 +558,21 @@ static int __pptp_rcv(struct pppox_sock *po,struct sk_buff *skb,int new)
 							seq, opt->seq_recv + 1);
 		opt->stat->rx_underwin++;
 	/* sequence number too high, is it reasonably close? */
-	}else if ( seq < opt->seq_recv + MISSING_WINDOW ||
-						 WRAPPED(seq, opt->seq_recv + MISSING_WINDOW) ){
+	}else /*if ( seq < opt->seq_recv + MISSING_WINDOW ||
+						 WRAPPED(seq, opt->seq_recv + MISSING_WINDOW) )*/{
 		opt->stat->rx_buffered++;
 		if ( log_level >= 2 && new )
 				printk("PPTP[%i]: buffering packet %d (expecting %d, lost or reordered)\n",opt->src_addr.call_id,
 						seq, opt->seq_recv+1);
-		spin_unlock_bh(&opt->rcv_lock);
 		return 0;
 	/* no, packet must be discarded */
-	}else{
+	}/*else{
 		if ( log_level >= 1 )
 			printk("PPTP[%i]: discarding bogus packet %d (expecting %d)\n",opt->src_addr.call_id,
 							seq, opt->seq_recv + 1);
-	}
+	}*/
 drop:
 	kfree_skb(skb);
-	spin_unlock_bh(&opt->rcv_lock);
 	return -1;
 }
 
@@ -544,8 +582,12 @@ static int pptp_rcv(struct sk_buff *skb)
 	struct pptp_gre_header *header;
 	struct pppox_sock *po;
 	struct pptp_opt *opt;
+	
+	if (log_level>=4) printk("PPTP: pptp_rcv rx_stop=%i\n",rx_stop);
+	
+	if (rx_stop) goto drop;
 
-	if (!pskb_may_pull(skb, 12))
+  if (!pskb_may_pull(skb, 12))
 		goto drop;
 
 	header = (struct pptp_gre_header *)skb->data;
@@ -584,17 +626,18 @@ static int pptp_rcv(struct sk_buff *skb)
 			printk("PPTP: received packed, but ppp is down\n");
 			goto drop;
 		}
-		if (__pptp_rcv(po,skb,1))
+		opt=&po->proto.pptp;
+		spin_lock_bh(&opt->rcv_lock);
+		if (__pptp_rcv(po,skb,1)){
+			spin_unlock_bh(&opt->rcv_lock);
 			buf_work(po);
-		else{
+		}else{
 			struct timeval tv;
 			do_gettimeofday(&tv);
 			skb_set_timestamp(skb,&tv);
-			opt=&po->proto.pptp;
-			spin_lock(&opt->skb_buf_lock);
 			skb_queue_tail(&opt->skb_buf, skb);
-			spin_unlock(&opt->skb_buf_lock);
 			schedule_delayed_work(&opt->buf_work,opt->stat->rtt/100*HZ/10000);
+			spin_unlock_bh(&opt->rcv_lock);
 		}
 		goto out;
 	}else if (htons(header->call_id)>=32768) {
@@ -613,7 +656,8 @@ out:
 
 static int proc_output (struct pppox_sock *po,char *buf)
 {
-	struct gre_statistics *stat=po->proto.pptp.stat;
+	struct pptp_opt *opt=&po->proto.pptp;
+	struct gre_statistics *stat=opt->stat;
 	char *p=buf;
 	p+=sprintf(p,"rx accepted  = %d\n",stat->rx_accepted);
 	p+=sprintf(p,"rx lost      = %d\n",stat->rx_lost);
@@ -624,6 +668,10 @@ static int proc_output (struct pppox_sock *po,char *buf)
 	p+=sprintf(p,"tx sent      = %d\n",stat->tx_sent);
 	p+=sprintf(p,"tx failed    = %d\n",stat->tx_failed);
 	p+=sprintf(p,"tx acks      = %d\n",stat->tx_acks);
+	p+=sprintf(p,"rtt          = %d\n",stat->rtt);
+	p+=sprintf(p,"timeout      = %d\n",opt->timeout);
+	p+=sprintf(p,"window       = %d\n",opt->window);
+	p+=sprintf(p,"max window   = %d\n",opt->max_window);
 
 	return p-buf;
 }
@@ -763,7 +811,8 @@ static int pptp_setsockopt(struct socket *sock, int level, int optname,
 			opt->timeout=val;
 			break;
 		case PPTP_SO_WINDOW:
-			opt->window=val;
+			opt->max_window=val;
+			opt->window=val/2;
 			break;
 		default:
 				return -ENOPROTOOPT;
@@ -829,11 +878,12 @@ static int pptp_release(struct socket *sock)
 
 	if (opt->src_addr.sin_addr.s_addr) {
 		cancel_delayed_work(&opt->buf_work);
+		cancel_delayed_work(&opt->ack_timeout_work);
 		flush_scheduled_work();
 		skb_queue_purge(&opt->skb_buf);
 		del_chan(po);
 
-		if (opt->proc){
+		if (test_bit(PPTP_FLAG_PROC,(unsigned long*)&opt->flags)) {
 			char unit[10];
 			sprintf(unit,"ppp%i",ppp_unit_number(&po->chan));
 			remove_proc_entry(unit,proc_dir);
@@ -907,18 +957,21 @@ static int pptp_create(struct socket *sock)
 	po = pppox_sk(sk);
 	opt=&po->proto.pptp;
 
-	opt->window=min_window;
+	opt->window=max_window/2;
+	opt->max_window=max_window;
 	opt->timeout=0;
+	opt->flags=0;
 	opt->seq_sent=0; opt->seq_recv=-1;
 	opt->ack_recv=0; opt->ack_sent=-1;
 	skb_queue_head_init(&opt->skb_buf);
-	spin_lock_init(&opt->skb_buf_lock);
     #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,20)
         INIT_WORK(&opt->ack_work,(work_func_t)ack_work);
 	INIT_DELAYED_WORK(&opt->buf_work,(work_func_t)_buf_work);
+	INIT_DELAYED_WORK(&opt->ack_timeout_work,(work_func_t)_ack_timeout_work);
     #else
 	INIT_WORK(&opt->ack_work,(void(*)(void*))ack_work,sk);
 	INIT_WORK(&opt->buf_work,(void(*)(void*))buf_work,sk);
+	INIT_WORK(&opt->ack_timeout_work,(void(*)(void*))ack_timeout_work,sk);
     #endif
 	opt->stat=kzalloc(sizeof(*opt->stat),GFP_KERNEL);
 	init_waitqueue_head(&opt->wait);
@@ -973,6 +1026,7 @@ int ctrl_write_proc(struct file* file,const char __user *buffer,unsigned long co
 		tmp_buf[count]=0;
 		if (sscanf(tmp_buf," log_level = %i",&val)==1) log_level=val;
 		else if (sscanf(tmp_buf," log_packets = %i",&val)==1) log_packets=val;
+		else if (sscanf(tmp_buf," rx_stop = %i",&val)==1) rx_stop=val;
 		else res=-EINVAL;
 	}
 	kfree(tmp_buf);

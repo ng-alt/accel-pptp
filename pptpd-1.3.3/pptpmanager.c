@@ -65,6 +65,7 @@ extern int pptp_delegate;
 
 /* option for timeout on starting ctrl connection */
 extern int pptp_stimeout;
+extern int pptp_ptimeout;
 
 extern int pptp_connections;
 
@@ -478,7 +479,7 @@ static void connectCall(int clientSocket, int clientNumber)
 	char speedgiven_argv[2];
 	extern char **environ;
 
-	char callid_argv[16];
+	char ptimeout_argv[16];
 
 	/*
 	 * Launch the CTRL manager binary; we send it some information such as
@@ -532,8 +533,8 @@ static void connectCall(int clientSocket, int clientNumber)
 
 	/* our call id to be included in GRE packets the client
 	 * will send to us */
-	NUM2ARRAY(callid_argv, unique_call_id);
-	ctrl_argv[pptpctrl_argc++] = callid_argv;
+	NUM2ARRAY(ptimeout_argv, pptp_ptimeout);
+	ctrl_argv[pptpctrl_argc++] = ptimeout_argv;
 
 	/* pass path to ppp binary */
 	ctrl_argv[pptpctrl_argc++] = ppp_binary;

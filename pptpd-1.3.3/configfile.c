@@ -59,7 +59,7 @@ int read_config_file(char *filename, char *keyword, char *value)
 		if (buffer[(len = strlen(buffer)) - 1] != '\n') {
 			syslog(LOG_ERR, "Long config file line ignored.");
 			do
-				fgets(buffer, MAX_CONFIG_STRING_SIZE - 1, in);
+				if (!fgets(buffer, MAX_CONFIG_STRING_SIZE - 1, in)) break;
 			while (buffer[strlen(buffer) - 1] != '\n');
 			continue;
 		}

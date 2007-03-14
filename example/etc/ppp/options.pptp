@@ -40,7 +40,7 @@ novjccomp
 # ppp-2.4.2 or later with MPPE only, kernel module ppp_mppe.o
 # {{{
 # Require MPPE 128-bit encryption
-#require-mppe-128
+require-mppe-128
 # }}}
 
 # http://polbox.com/h/hs001/ fork from PPP project by Jan Dubiec

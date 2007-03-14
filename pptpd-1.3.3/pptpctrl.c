@@ -77,6 +77,7 @@ struct in_addr inetaddrs[2];
 /* Needed by this and ctrlpacket.c */
 int pptpctrl_debug = 0;		/* specifies if debugging is on or off */
 uint16_t unique_call_id = 0xFFFF;	/* Start value for our call IDs on this TCP link */
+int pptp_timeout=1000000;
 
 int gargc;                     /* Command line argument count */
 char **gargv;                  /* Command line argument vector */
@@ -142,7 +143,7 @@ int main(int argc, char **argv)
 	GETARG_VALUE(speed);
 	GETARG_VALUE(pppLocal);
 	GETARG_VALUE(pppRemote);
-	if (arg < argc) GETARG_INT(unique_call_id);
+	if (arg < argc) GETARG_INT(pptp_timeout);
 	if (arg < argc) GETARG_STRING(ppp_binary);
 	if (arg < argc) GETARG_INT(pptp_logwtmp);
 
@@ -389,6 +390,10 @@ static void pptp_handle_ctrl_connection(char **pppaddrs, struct in_addr *inetadd
 
 				if (setsockopt(pptp_sock,0,PPTP_SO_WINDOW,&window,sizeof(window)))
 					syslog(LOG_WARNING,"CTRL: failed to setsockopt SO_WINDOW\n");
+
+				pptp_timeout*=1000;
+				if (setsockopt(pptp_sock,0,PPTP_SO_TIMEOUT,&pptp_timeout,sizeof(pptp_timeout)))
+					syslog(LOG_WARNING,"CTRL: failed to setsockopt SO_TIMEOUT\n");
 
 				dst_addr.sa_family=AF_PPPOX;
 				dst_addr.sa_protocol=PX_PROTO_PPTP;

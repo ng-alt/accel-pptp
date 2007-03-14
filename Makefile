@@ -1,4 +1,4 @@
-PPPD := $(shell /usr/sbin/pppd --version 2>&1)
+PPPD := $(shell /usr/sbin/pppd --version 2>&1 | grep version)
 PPPD := $(patsubst pppd,,$(PPPD))
 PPPD := $(patsubst version,,$(PPPD))
 PPPD := $(strip $(PPPD))

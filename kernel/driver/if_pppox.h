@@ -138,23 +138,26 @@ struct pptp_opt {
 	struct pptp_addr	dst_addr;
 	int timeout;
 	int window;
+	int max_window;
 	__u32 ack_sent, ack_recv;
 	__u32 seq_sent, seq_recv;
-	int pause:1;
-	int proc:1;
-	spinlock_t skb_buf_lock;
+	int flags;
 	struct sk_buff_head skb_buf;
 	struct work_struct ack_work;  //send ack work
   #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,20)
 	struct delayed_work buf_work; //check bufferd packets work
+	struct delayed_work ack_timeout_work; //wait ack timeout work
   #else
-  struct work_struct buf_work; //check bufferd packets work
+	struct work_struct buf_work; //check bufferd packets work
+	struct work_struct ack_timeout_work; //wait ack timeout work
   #endif
 	struct gre_statistics *stat;
 	wait_queue_head_t	wait;
 	spinlock_t xmit_lock;
 	spinlock_t rcv_lock;
 };
+#define PPTP_FLAG_PAUSE 0
+#define PPTP_FLAG_PROC 1
 
 #include <net/sock.h>
 

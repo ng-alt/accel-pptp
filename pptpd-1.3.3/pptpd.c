@@ -63,6 +63,7 @@ int pptp_logwtmp = 0;
 int pptp_delegate = 0;
 
 int pptp_stimeout = STIMEOUT_DEFAULT;
+int pptp_ptimeout = PTIMEOUT_DEFAULT;
 
 int pptp_connections = CONNECTIONS_DEFAULT;
 
@@ -110,6 +111,8 @@ static void showusage(char *prog)
 #endif
 	printf(" [-t] [--stimeout seconds] Specifies the timeout for the first packet. This is a DOS protection\n");
 	printf("                           (default is 10).\n");
+	printf(" [-T] [--ptimeout msec]     Specifies the maximum timeout for the packet.\n");
+	printf("                           (default is 1000).\n");
 	printf(" [-v] [--version]          Displays the pptpd version number.\n");
 	printf(" [-w] [--logwtmp]          Update wtmp as users login.\n");
 	printf(" [-C] [--connections n]    Limit on number of connections.\n");
@@ -149,9 +152,9 @@ int main(int argc, char **argv)
 	while (1) {
 		int option_index = 0;
 #ifdef BCRELAY
-		char *optstring = "b:c:de:fhil:o:p:s:t:vwC:D";
+		char *optstring = "b:c:de:fhil:o:p:s:t:T:vwC:D";
 #else
-		char *optstring = "c:de:fhil:o:p:s:t:vwC:D";
+		char *optstring = "c:de:fhil:o:p:s:t:T:vwC:D";
 #endif
 
 		static struct option long_options[] =
@@ -170,6 +173,7 @@ int main(int argc, char **argv)
 			{"pidfile", 1, 0, 0},
 			{"speed", 1, 0, 0},
 			{"stimeout", 1, 0, 0},
+			{"ptimeout", 1, 0, 0},
 			{"version", 0, 0, 0},
 			{"logwtmp", 0, 0, 0},
 			{"connections", 1, 0, 0},
@@ -261,6 +265,10 @@ int main(int argc, char **argv)
 			pptp_stimeout = atoi(optarg);
 			break;
 
+		case 'T': /* --stimeout */
+			pptp_ptimeout = atoi(optarg);
+			break;
+
 		case 'c': /* --conf */
 			{
 				FILE *f;
@@ -308,6 +316,12 @@ int main(int argc, char **argv)
 		pptp_stimeout = atoi(tmp);
 		if (pptp_stimeout <= 0)
 			pptp_stimeout = STIMEOUT_DEFAULT;
+	}
+
+	if (!pptp_ptimeout && read_config_file(configFile, PTIMEOUT_KEYWORD, tmp) > 0) {
+		pptp_ptimeout = atoi(tmp);
+		if (pptp_ptimeout <= 0)
+			pptp_ptimeout = PTIMEOUT_DEFAULT;
 	}
 
 	if (!pptp_noipparam && read_config_file(configFile, NOIPPARAM_KEYWORD, tmp) > 0) {

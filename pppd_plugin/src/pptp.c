@@ -67,7 +67,7 @@ char *pptp_client = NULL;
 char *pptp_phone = NULL;
 int pptp_sock=-1;
 int pptp_window=10;
-static int pptp_timeout=10000;
+int pptp_timeout=100000;
 struct in_addr localbind = { INADDR_NONE };
 
 static int callmgr_sock;
@@ -93,7 +93,7 @@ static option_t Options[] =
     { "pptp_window", o_int, &pptp_window,
       "PPTP sliding window size" },
     { "pptp_timeout", o_int, &pptp_timeout,
-      "timeout for waiting reordered packets"},
+      "timeout for waiting reordered packets and acks"},
     { NULL }
 };
 
@@ -325,15 +325,15 @@ static int get_call_id(int sock, pid_t gre, pid_t pppd,
 
 void plugin_init(void)
 {
-    if (!ppp_available() && !new_style_driver)
+    /*if (!ppp_available() && !new_style_driver)
     {
 				fatal("Linux kernel does not support PPP -- are you running 2.4.x?");
-    }
+    }*/
 
     add_options(Options);
 
     info("PPTP plugin version %s compiled against pppd %s",
-	 "0.7.5", PPP_VERSION);
+	 "0.7.7", PPP_VERSION);
 
     the_channel = &pptp_channel;
     modem = 0;

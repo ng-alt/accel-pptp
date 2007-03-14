@@ -51,7 +51,7 @@ src_compile() {
 		${myconf} || die "configure failed"
 	    emake COPTS="${CFLAGS}" || die "make failed"
 	fi
-
+	
 	cd ${S}/pppd_plugin
 	eautoreconf
 	local myconf
@@ -80,6 +80,14 @@ src_install () {
 	    newins "${FILESDIR}/pptpd-confd" pptpd
 	fi
 	
+	if use client; then
+	    cd ${S}/example
+	    insinto /etc/ppp
+	    doins ppp/options.pptp
+	    insinto /etc/ppp/peers
+	    doins ppp/peers/pptp_test
+	fi
+
 	cd ${S}/pppd_plugin/src/.libs
 	local PPPD_VER=`best_version net-dialup/ppp`
 	PPPD_VER=${PPPD_VER#*/*-} #reduce it to ${PV}-${PR}
