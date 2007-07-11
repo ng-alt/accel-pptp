@@ -127,12 +127,14 @@ struct pppoe_hdr {
 
 
 #ifdef __KERNEL__
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
 struct pppoe_opt {
 	struct net_device      *dev;	  /* device associated with socket*/
 	struct pppoe_addr	pa;	  /* what this socket is bound to*/
 	struct sockaddr_pppox	relay;	  /* what socket data will be
 					     relayed to (PPPoE relaying) */
 };
+#endif
 struct pptp_opt {
 	struct pptp_addr	src_addr;
 	struct pptp_addr	dst_addr;
@@ -143,6 +145,13 @@ struct pptp_opt {
 	__u32 seq_sent, seq_recv;
 	int flags;
 	struct sk_buff_head skb_buf;
+  #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+	struct tq_struct ack_work;
+	struct tq_struct buf_work; //check bufferd packets work
+	struct tq_struct ack_timeout_work; //wait ack timeout work
+	struct timer_list buf_timer;
+	struct timer_list ack_timeout_timer; //wait ack timeout work
+	#else
 	struct work_struct ack_work;  //send ack work
   #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,20)
 	struct delayed_work buf_work; //check bufferd packets work
@@ -151,6 +160,7 @@ struct pptp_opt {
 	struct work_struct buf_work; //check bufferd packets work
 	struct work_struct ack_timeout_work; //wait ack timeout work
   #endif
+  #endif 
 	struct gre_statistics *stat;
 	wait_queue_head_t	wait;
 	spinlock_t xmit_lock;
@@ -163,8 +173,13 @@ struct pptp_opt {
 
 struct pppox_sock {
 	/* struct sock must be the first member of pppox_sock */
+	#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+	struct ppp_channel	chan;
+	struct sock		*sk;
+	#else
 	struct sock		sk;
 	struct ppp_channel	chan;
+	#endif
 	struct pppox_sock	*next;	  /* for hash table */
 	union {
 		struct pppoe_opt pppoe;
@@ -178,12 +193,20 @@ struct pppox_sock {
 
 static inline struct pppox_sock *pppox_sk(struct sock *sk)
 {
+	#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+	return (struct pppox_sock *)sk->protinfo.pppox;
+	#else
 	return (struct pppox_sock *)sk;
+	#endif
 }
 
 static inline struct sock *sk_pppox(struct pppox_sock *po)
 {
+	#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+	return po->sk;
+	#else
 	return (struct sock *)po;
+	#endif
 }
 
 struct module;
@@ -192,7 +215,9 @@ struct pppox_proto {
 	int		(*create)(struct socket *sock);
 	int		(*ioctl)(struct socket *sock, unsigned int cmd,
 				 unsigned long arg);
+  #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,15)
 	struct module	*owner;
+	#endif
 };
 
 extern int register_pppox_proto(int proto_num, struct pppox_proto *pp);

@@ -3,15 +3,15 @@ Overview
 The ACCEL-PPTP is PPTP client/server based on POPTOP (http://www.poptop.org) and PPTPCLIENT (http://pptpclient.sourceforge.net).
 ACCEL-PPTP uses kernel module to increase performance and decrease system usage.
 For more documentation about PPTP visit POPTOP web site.
-ACCEL-PPTP was successfully tested on about 650 connections and system usage has been decreased by ~50% on comparisons with the
+ACCEL-PPTP was successfully tested on about 800 connections and system usage has been decreased by ~50% on comparisons with the
 original poptop server.
 
 
 Requirment
 ----------
 1. modern linux distribution
-1. kernel-2.6.15 or later with PPPOX support
-2. pppd-2.4.2 or later
+2. kernel-2.6.15 or later with PPPOX support or kernel-2.4 patched for PPPOX support (not fully tested)
+3. pppd-2.4.2 or later
 
 
 Insallation
@@ -57,10 +57,10 @@ There is only patch for 2.6.18 kernel now. If you wish patch for other kernels p
 
 Thanks
 ------
-Thanks to Kirill Yushkov for debug support.
+Thanks to Kirill Yushkov for debug support and donations.
 
 
-Please feedback me about your results.
-Good luck.
-http://accel-pptp.sourceforge.net
-xeb@mail.ru
+http://accel-pptp.sourceforge.net/
+mail: xeb@mail.ru, xxebxebx@gmail.com
+ICQ: 337258064
+Jabber: xeb@city.veganet.ru

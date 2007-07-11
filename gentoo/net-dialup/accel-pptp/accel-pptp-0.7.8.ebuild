@@ -10,7 +10,7 @@ HOMEPAGE="http://accel-pptp.sourceforge.net/"
 
 SLOT="0"
 LICENSE="GPL"
-KEYWORDS="amd64 x86"
+KEYWORDS="~amd64 ~x86"
 IUSE="tcpd server"
 
 DEPEND="server? (!net-dialup/pptpd) 
