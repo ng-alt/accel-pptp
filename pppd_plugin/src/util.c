@@ -45,15 +45,19 @@ static void close_log(void)
 void _log(const char *func, const char *file, int line, const char *format, ...)
 {
     MAKE_STRING("log");
+    open_log();
     syslog(LOG_NOTICE, "%s", string);
+    close_log();
 }
 
 /*** print a warning to syslog ************************************************/
 void _warn(const char *func, const char *file, int line, const char *format, ...)
 {
     MAKE_STRING("warn");
+    open_log();
     fprintf(stderr, "%s\n", string);
     syslog(LOG_WARNING, "%s", string);
+    close_log();
 }
 
 /*** print a fatal warning to syslog and exit *********************************/

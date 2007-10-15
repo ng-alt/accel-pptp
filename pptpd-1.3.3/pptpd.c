@@ -67,6 +67,8 @@ int pptp_ptimeout = PTIMEOUT_DEFAULT;
 
 int pptp_connections = CONNECTIONS_DEFAULT;
 
+int keep_connections=0;
+
 /* Local prototypes */
 static void processIPStr(int type, char *ipstr);
 
@@ -117,6 +119,8 @@ static void showusage(char *prog)
 	printf(" [-w] [--logwtmp]          Update wtmp as users login.\n");
 	printf(" [-C] [--connections n]    Limit on number of connections.\n");
 	printf(" [-D] [--delegate]         Delegate IP allocation to pppd.\n");
+	printf(" [-k] [--keep]             Keep connections after exit.\n");
+	printf("                           (default do not keep).\n");
 
 	printf("\n\nLogs and debugging go to syslog as DAEMON.");
 
@@ -152,9 +156,9 @@ int main(int argc, char **argv)
 	while (1) {
 		int option_index = 0;
 #ifdef BCRELAY
-		char *optstring = "b:c:de:fhil:o:p:s:t:T:vwC:D";
+		char *optstring = "b:c:de:fhil:o:p:s:t:T:vwC:Dk";
 #else
-		char *optstring = "c:de:fhil:o:p:s:t:T:vwC:D";
+		char *optstring = "c:de:fhil:o:p:s:t:T:vwC:Dk";
 #endif
 
 		static struct option long_options[] =
@@ -178,6 +182,7 @@ int main(int argc, char **argv)
 			{"logwtmp", 0, 0, 0},
 			{"connections", 1, 0, 0},
 			{"delegate", 0, 0, 0},
+			{"keep", 0, 0, 0},
 			{0, 0, 0, 0}
 		};
 
@@ -187,9 +192,9 @@ int main(int argc, char **argv)
 		/* convert long options to short form */
 		if (c == 0)
 #ifdef BCRELAY
-			c = "bcdefhilopstvwCD"[option_index];
+			c = "bcdefhilopstvwCDk"[option_index];
 #else
-			c = "cdefhilopstvwCD"[option_index];
+			c = "cdefhilopstvwCDk"[option_index];
 #endif
 		switch (c) {
 #ifdef BCRELAY
@@ -267,6 +272,10 @@ int main(int argc, char **argv)
 
 		case 'T': /* --stimeout */
 			pptp_ptimeout = atoi(optarg);
+			break;
+		case 'k': /* --keep */
+			keep_connections = 1;
+			syslog(LOG_ERR, "MGR:keep_connections");
 			break;
 
 		case 'c': /* --conf */
@@ -354,6 +363,10 @@ int main(int argc, char **argv)
 
 	if (!pptp_delegate && read_config_file(configFile, DELEGATE_KEYWORD, tmp) > 0) {
 		pptp_delegate = TRUE;
+	}
+
+	if (read_config_file(configFile, KEEP_KEYWORD, tmp) > 0) {
+		keep_connections = TRUE;
 	}
 
 	if (!pid_file)

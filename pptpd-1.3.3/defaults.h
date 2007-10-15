@@ -75,5 +75,6 @@
 #define PPP_BINARY_KEYWORD		"ppp"
 #define LOGWTMP_KEYWORD			"logwtmp"
 #define DELEGATE_KEYWORD		"delegate"
+#define KEEP_KEYWORD		 	"keep"
 
 #endif	/* !_PPTPD_DEFAULTS_H */

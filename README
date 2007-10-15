@@ -10,8 +10,8 @@ original poptop server.
 Requirment
 ----------
 1. modern linux distribution
-2. kernel-2.6.15 or later with PPPOX support or kernel-2.4 patched for PPPOX support (not fully tested)
-3. pppd-2.4.2 or later
+1. kernel-2.6.15 or later with PPPOX support or kernel-2.4.x patched for PPPoX support (not fully tested)
+2. pppd-2.4.2 or later
 
 
 Insallation

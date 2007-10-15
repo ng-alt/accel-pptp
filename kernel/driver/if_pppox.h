@@ -56,8 +56,13 @@ struct pptp_addr{
  * Protocols supported by AF_PPPOX
  */
 #define PX_PROTO_OE    0 /* Currently just PPPoE */
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,22)
 #define PX_PROTO_PPTP  1
 #define PX_MAX_PROTO   2
+#else
+#define PX_PROTO_PPTP  2
+#define PX_MAX_PROTO   3
+#endif
 
 struct sockaddr_pppox {
        sa_family_t     sa_family;            /* address family, AF_PPPOX */

@@ -68,6 +68,7 @@ extern int pptp_stimeout;
 extern int pptp_ptimeout;
 
 extern int pptp_connections;
+extern int keep_connections;
 
 /* local function prototypes */
 static void connectCall(int clientSocket, int clientNumber);
@@ -272,7 +273,7 @@ int pptp_manager(int argc, char **argv)
 				sigchld_responder(signum);
 			else if (signum == SIGTERM)
 			{
-			    sigterm_responder();
+			    if (!keep_connections) sigterm_responder();
 				return signum;
 			}
 		}

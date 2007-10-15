@@ -72,6 +72,7 @@ struct in_addr localbind = { INADDR_NONE };
 
 static int callmgr_sock;
 static int pptp_fd;
+int call_ID;
 
 //static struct in_addr get_ip_address(char *name);
 static int open_callmgr(int call_id,struct in_addr inetaddr, char *phonenr,int window);
@@ -183,6 +184,7 @@ static int pptp_start_client(void)
 	}
 	len=sizeof(src_addr);
 	getsockname(pptp_fd,(struct sockaddr*)&src_addr,&len);
+	call_ID=src_addr.sa_addr.pptp.call_id;
 
   do {
         /*

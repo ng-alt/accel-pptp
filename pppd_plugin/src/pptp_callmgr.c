@@ -27,6 +27,7 @@
 #include "util.h"
 
 extern struct in_addr localbind; /* from pptp.c */
+extern int call_ID;
 
 int open_inetsock(struct in_addr inetaddr);
 int open_unixsock(struct in_addr inetaddr);
@@ -114,7 +115,7 @@ int callmgr_main(int argc, char **argv, char **envp)
     int i;
     char * volatile phonenr=NULL;
     int volatile window=10;
-    int volatile call_id=0;
+    //int volatile call_id=0;
     /* Step 0: Check arguments */
     if (argc < 2)
         fatal("Usage: %s ip.add.ress.here [--phone <phone number>]", argv[0]);
@@ -124,7 +125,7 @@ int callmgr_main(int argc, char **argv, char **envp)
     	//log("%s",argv[i]);
     	if (strcmp(argv[i],"--phone")==0 && i+1<argc) phonenr=argv[++i];
     	else if (strcmp(argv[i],"--window")==0 && i+1<argc) window=atoi(argv[++i]);
-    	else if (strcmp(argv[i],"--call_id")==0 && i+1<argc) call_id=atoi(argv[++i]);
+    	else if (strcmp(argv[i],"--call_id")==0 && i+1<argc) call_ID=atoi(argv[++i]);
     }
     if (inet_aton(argv[1], &inetaddr) == 0)
         fatal("Invalid IP address: %s", argv[1]);
@@ -219,7 +220,7 @@ int callmgr_main(int argc, char **argv, char **envp)
             lci->unix_sock = s;
             /* Give the initiator time to write the PIDs while we open
              * the call */
-            call = pptp_call_open(conn, call_id,call_callback, phonenr,window);
+            call = pptp_call_open(conn, call_ID,call_callback, phonenr,window);
             /* Read and store the associated pids */
             read(s, &lci->pid[0], sizeof(lci->pid[0]));
             read(s, &lci->pid[1], sizeof(lci->pid[1]));
@@ -398,5 +399,5 @@ void callmgr_name_unixsock(struct sockaddr_un *where,
     strncpy(localaddr,  inet_ntoa(localbind), 16);
     strncpy(remoteaddr, inet_ntoa(inetaddr),  16);
     snprintf(where->sun_path, sizeof(where->sun_path),
-            PPTP_SOCKET_PREFIX "%s:%s", localaddr, remoteaddr);
+            PPTP_SOCKET_PREFIX "%s:%i", remoteaddr,call_ID);
 }

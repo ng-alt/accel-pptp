@@ -16,11 +16,11 @@ default:
 	sed -i -e "s:\\(#define[ \\t]*VERSION[ \\t]*\\)\".*\":\\1\"$(PPPD)\":" "pptpd-1.3.3/plugins/patchlevel.h"
 	(cd pptpd-1.3.3; ./configure --prefix=/usr && make)
 
-install_client: default
+client_install: default
 	install -m 0644 pppd_plugin/src/.libs/pptp.so.0.0.0 /usr/lib/pppd/$(PPPD)/pptp.so
 	(cd kernel/driver; make install)
 
-install_server: install_client
+server_install: client_install
 	(cd pptpd-1.3.3; make install)
 
 clean:
