@@ -350,6 +350,7 @@ int open_unixsock(struct in_addr inetaddr)
     struct stat st;
     char *dir;
     int s;
+        warn("open\n");
     if ((s = socket(AF_UNIX, SOCK_STREAM, 0)) < 0) {
         warn("socket: %s", strerror(errno));
         return s;
@@ -365,6 +366,7 @@ int open_unixsock(struct in_addr inetaddr)
     if (!make_valid_path(dir, 0770))
         fatal("Could not make path to %s: %s", where.sun_path, strerror(errno));
     free(dir);
+    warn("bind");
     if (bind(s, (struct sockaddr *) &where, sizeof(where)) < 0) {
         warn("bind: %s", strerror(errno));
         close(s); return -1;

@@ -48,7 +48,7 @@
 
 #include <asm/uaccess.h>
 
-#define PPTP_DRIVER_VERSION "0.7.10"
+#define PPTP_DRIVER_VERSION "0.7.11"
 
 MODULE_DESCRIPTION("Point-to-Point Tunneling Protocol for Linux");
 MODULE_AUTHOR("Kozlov D. (xeb@mail.ru)");
@@ -114,7 +114,7 @@ do { \
 	(_timer)->function=_routine; \
 	(_timer)->data=_data; \
 	init_timer(_timer); \
-} while (0); 
+} while (0);
 
 static inline void *kzalloc(size_t size,int gfp)
 {
@@ -167,7 +167,7 @@ static void inc_stat_counter(unsigned int *counter)
 	{
 		write_lock_bh(&stat_lock);
 		(*counter)++;
-		write_unlock_bh(&stat_lock);		
+		write_unlock_bh(&stat_lock);
 	}
 }
 #define INC_TX_PACKETS {inc_stat_counter(&tx_packets_cur); inc_stat_counter(&stat_tx_packets);}
@@ -182,27 +182,27 @@ static void inc_stat_counter(unsigned int *counter)
 static void do_stat_work(void*p)
 {
 	unsigned long delta_jiff;
-	
+
 	write_lock_bh(&stat_lock);
-	
+
 	delta_jiff=jiffies-stat_last_update;
 	stat_last_update=jiffies;
 	if (delta_jiff<=0) goto exit;
-	
+
 	tx_packets_avg=(tx_packets_avg+tx_packets_cur*HZ/delta_jiff)/2;
 	rx_packets_avg=(rx_packets_avg+rx_packets_cur*HZ/delta_jiff)/2;
 	ack_timeouts_avg=(ack_timeouts_avg+ack_timeouts_cur*HZ/delta_jiff)/2;
 	ack_works_avg=(ack_works_avg+ack_works_cur*HZ/delta_jiff)/2;
 	buf_works_avg=(buf_works_avg+buf_works_cur*HZ/delta_jiff)/2;
-	
+
 	tx_packets_cur=0;
 	rx_packets_cur=0;
 	ack_timeouts_cur=0;
 	ack_works_cur=0;
 	buf_works_cur=0;
-	
+
 exit:
-	write_unlock_bh(&stat_lock);		
+	write_unlock_bh(&stat_lock);
 
 	schedule_delayed_work(&stat_work,stat_collect_time*HZ);
 }
@@ -364,7 +364,7 @@ static int pptp_xmit(struct ppp_channel *chan, struct sk_buff *skb)
 	INC_TX_PACKETS;
 
 	spin_lock_bh(&opt->xmit_lock);
-	
+
 	window=WRAPPED(opt->ack_recv,opt->seq_sent)?(__u32)0xffffffff-opt->seq_sent+opt->ack_recv:opt->seq_sent-opt->ack_recv;
 
 	if (!skb){
@@ -404,13 +404,13 @@ static int pptp_xmit(struct ppp_channel *chan, struct sk_buff *skb)
 	}
 	#endif
 	tdev = rt->u.dst.dev;
-	
+
 	#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 	max_headroom = ((tdev->hard_header_len+15)&~15) + sizeof(*iph)+sizeof(*hdr)+2;
 	#else
 	max_headroom = LL_RESERVED_SPACE(tdev) + sizeof(*iph)+sizeof(*hdr)+2;
 	#endif
-	
+
 
 	if (!skb){
 		skb=dev_alloc_skb(max_headroom);
@@ -431,7 +431,7 @@ static int pptp_xmit(struct ppp_channel *chan, struct sk_buff *skb)
 		kfree_skb(skb);
 		skb = new_skb;
 	}
-	
+
 	if (skb->len){
 		int islcp;
 		unsigned char *data=skb->data;
@@ -520,7 +520,7 @@ static int pptp_xmit(struct ppp_channel *chan, struct sk_buff *skb)
 
 	dst_release(skb->dst);
 	skb->dst = &rt->u.dst;
-	
+
 	nf_reset(skb);
 
 	skb->ip_summed = CHECKSUM_NONE;
@@ -528,7 +528,7 @@ static int pptp_xmit(struct ppp_channel *chan, struct sk_buff *skb)
 	ip_send_check(iph);
 
 	err = NF_HOOK(PF_INET, NF_IP_LOCAL_OUT, skb, NULL, rt->u.dst.dev, dst_output);
-	
+
 	wake_up(&opt->wait);
 
 	if (err == NET_XMIT_SUCCESS || err == NET_XMIT_CN) {
@@ -539,7 +539,7 @@ static int pptp_xmit(struct ppp_channel *chan, struct sk_buff *skb)
 		}
 	}else{
 		INC_TX_ERRORS;
-		opt->stat->tx_failed++;	
+		opt->stat->tx_failed++;
 	}
 
 	spin_unlock_bh(&opt->xmit_lock);
@@ -583,7 +583,7 @@ static void do_ack_timeout_work(struct pppox_sock *po)
 {
     struct pptp_opt *opt=&po->proto.pptp;
     int paused;
-    
+
     spin_lock_bh(&opt->xmit_lock);
     paused=__test_and_clear_bit(PPTP_FLAG_PAUSE,(unsigned long*)&opt->flags);
     if (paused){
@@ -668,7 +668,7 @@ static void inline _buf_work(struct work_struct *work)
 {
 	struct pptp_opt *opt=container_of(work,struct pptp_opt,buf_work.work);
 	struct pppox_sock *po=container_of(opt,struct pppox_sock,proto.pptp);
-	
+
 	INC_BUF_WORKS;
 	do_buf_work(po);
 }
@@ -706,7 +706,7 @@ static int __pptp_rcv(struct pppox_sock *po,struct sk_buff *skb,int new)
 				int paused;
 				__u32 ack = (PPTP_GRE_IS_S(header->flags))?
 						header->ack:header->seq; /* ack in different place if S = 0 */
-				
+
 				ack = ntohl( ack);
 
 				spin_lock_bh(&opt->xmit_lock);
@@ -717,7 +717,7 @@ static int __pptp_rcv(struct pppox_sock *po,struct sk_buff *skb,int new)
 
 				paused=__test_and_clear_bit(PPTP_FLAG_PAUSE,(unsigned long*)&opt->flags);
 				spin_unlock_bh(&opt->xmit_lock);
-				
+
 				if (paused){
 						#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 						del_timer(&opt->ack_timeout_timer);
@@ -796,12 +796,12 @@ static int __pptp_rcv(struct pppox_sock *po,struct sk_buff *skb,int new)
 			/* protocol is compressed */
 			skb_push(skb, 1)[0] = 0;
 		}
-		
+
 		skb->ip_summed=CHECKSUM_NONE;
 		ppp_input(&po->chan,skb);
 
 		INC_RX_PACKETS;
-	
+
 		return 1;
 	/* out of order, check if the number is too low and discard the packet.
 	* (handle sequence number wrap-around, and try to do it right) */
@@ -838,12 +838,12 @@ static int pptp_rcv(struct sk_buff *skb)
 	struct pptp_opt *opt;
 
 	if (log_level>=4) printk(KERN_INFO"PPTP: pptp_rcv rx_stop=%i\n",rx_stop);
-	
+
 	if (rx_stop) goto drop;
 
   if (!pskb_may_pull(skb, 12))
 		goto drop;
-		
+
 	if (!(skb=skb_share_check(skb,GFP_ATOMIC)))
 		goto out;
 
@@ -871,6 +871,10 @@ static int pptp_rcv(struct sk_buff *skb)
 							header->flags & 0xF);
 		goto drop;
 	}
+
+	dst_release(skb->dst);
+	skb->dst = NULL;
+	nf_reset(skb);
 
 	if ((po=lookup_chan(htons(header->call_id)))) {
 		opt=&po->proto.pptp;
@@ -902,7 +906,7 @@ static int pptp_rcv(struct sk_buff *skb)
 	}
 
 drop:
-	INC_RX_ERRORS;	
+	INC_RX_ERRORS;
 	kfree_skb(skb);
 out:
 	return NET_RX_DROP;
@@ -1007,7 +1011,7 @@ static int stat_read_proc(char *page, char **start, off_t off,int count, int *eo
 	p+=sprintf(p,"rx_errors    = %i\n",stat_rx_errors);
 	p+=sprintf(p,"rx_buffered  = %i\n",stat_rx_buffered);
 	len=p-page;
-	
+
 	if (len <= off+count) *eof = 1;
 	*start = page + off;
 	len -= off;
@@ -1092,7 +1096,7 @@ static int pptp_connect(struct socket *sock, struct sockaddr *uservaddr,
 
 	po->chan.private=sk;
 	po->chan.ops=&pptp_chan_ops;
-	
+
 	#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 	{
 		struct rt_key key = {
@@ -1121,7 +1125,7 @@ static int pptp_connect(struct socket *sock, struct sockaddr *uservaddr,
 	po->chan.mtu=dst_mtu(&rt->u.dst);
 	if (!po->chan.mtu) po->chan.mtu=PPP_MTU;
 	po->chan.mtu-=PPTP_HEADER_OVERHEAD;
-	
+
 	po->chan.hdrlen=2+sizeof(struct pptp_gre_header);
 	error = ppp_register_channel(&po->chan);
 	if (error){
@@ -1161,7 +1165,7 @@ static int pptp_setsockopt(struct socket *sock, int level, int optname,
 	struct pppox_sock *po = pppox_sk(sk);
 	struct pptp_opt *opt=&po->proto.pptp;
 	int val;
-	
+
 	if (optlen!=sizeof(int))
 		return -EINVAL;
 
@@ -1227,7 +1231,7 @@ static int pptp_release(struct socket *sock)
 	if (!sk)
 		return 0;
 
-	#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)	
+	#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 	if (sk->dead)
 	#else
 	if (sock_flag(sk, SOCK_DEAD))
@@ -1269,7 +1273,7 @@ static int pptp_release(struct socket *sock)
 	sock_orphan(sk);
 	sock->sk = NULL;
 
-	#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)	
+	#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 	skb_queue_purge(&sk->receive_queue);
 	#else
 	skb_queue_purge(&sk->sk_receive_queue);
@@ -1292,7 +1296,7 @@ static struct proto_ops pptp_ops = {
     .family		= AF_PPPOX,
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
     .owner		= THIS_MODULE,
-#endif    
+#endif
     .release		= pptp_release,
     .bind		=  pptp_bind,
     .connect		= pptp_connect,
@@ -1318,7 +1322,7 @@ static void pptp_sock_destruct(struct sock *sk)
 {
 	if (sk->protinfo.destruct_hook)
 		kfree(sk->protinfo.destruct_hook);
-		
+
 	MOD_DEC_USE_COUNT;
 }
 
@@ -1349,7 +1353,7 @@ static int pptp_create(struct socket *sock)
 	sk->protinfo.pppox=kzalloc(sizeof(struct pppox_sock),GFP_KERNEL);
 	sk->destruct=pptp_sock_destruct;
 	sk->protinfo.destruct_hook=sk->protinfo.pppox;
-	
+
 	po = pppox_sk(sk);
 	po->sk=sk;
 	opt=&po->proto.pptp;
@@ -1447,7 +1451,7 @@ static int pptp_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
 		lock_sock(sk);
 		break;
 	}
-	
+
 	return res;
 }
 
@@ -1514,11 +1518,11 @@ static int pptp_init_module(void)
 	proc_dir=proc_mkdir("net/pptp",NULL);
 	if (proc_dir){
 	    proc_dir->owner=THIS_MODULE;
-	    
+
 	    res=create_proc_entry("ctrl",0,proc_dir);
 	    if (!res)printk(KERN_ERR "PPTP: failed to create ctrl proc entry\n");
 	    else res->write_proc=ctrl_write_proc;
-	
+
 	    res=create_proc_entry("stat",0,proc_dir);
 	    if (!res)printk(KERN_ERR "PPTP: failed to create stat proc entry\n");
 	    else{
@@ -1535,7 +1539,7 @@ static int pptp_init_module(void)
   #else
 	INIT_WORK(&stat_work,(void(*)(void*))do_stat_work,NULL);
   #endif
-	
+
 	stat_last_update=jiffies;
 	if (statistics)
 		schedule_delayed_work(&stat_work,stat_collect_time*HZ);
@@ -1547,7 +1551,7 @@ out_unregister_sk_proto:
 	proto_unregister(&pptp_sk_proto);
 	#endif
 out_inet_del_protocol:
-	
+
 	#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 	inet_del_protocol(&net_pptp_protocol);
 	#else
@@ -1560,7 +1564,7 @@ static void pptp_exit_module(void)
 {
 	cancel_delayed_work(&stat_work);
 	flush_scheduled_work();
-	
+
 	unregister_pppox_proto(PX_PROTO_PPTP);
 	#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 	inet_del_protocol(&net_pptp_protocol);
