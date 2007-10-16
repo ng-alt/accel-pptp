@@ -48,7 +48,7 @@
 
 #include <asm/uaccess.h>
 
-#define PPTP_DRIVER_VERSION "0.7.9"
+#define PPTP_DRIVER_VERSION "0.7.10"
 
 MODULE_DESCRIPTION("Point-to-Point Tunneling Protocol for Linux");
 MODULE_AUTHOR("Kozlov D. (xeb@mail.ru)");
@@ -228,7 +228,6 @@ static int pptp_xmit(struct ppp_channel *chan, struct sk_buff *skb);
 static int read_proc(char *page, char **start, off_t off,int count,
                      int *eof, void *data);
 static int __pptp_rcv(struct pppox_sock *po,struct sk_buff *skb,int new);
-static int pptp_rcv_core(struct sock *sk,struct sk_buff *skb);
 
 static struct ppp_channel_ops pptp_chan_ops= {
 	.start_xmit = pptp_xmit,
@@ -603,7 +602,7 @@ static void _ack_timeout_work(struct work_struct *work)
     do_ack_timeout_work(po);
 }
 #else
-static void do_ack_timeout_work(struct pppox_sock *po)
+static void _ack_timeout_work(struct pppox_sock *po)
 {
 	INC_ACK_TIMEOUTS;
   do_ack_timeout_work(po);
@@ -832,43 +831,12 @@ drop:
 	return -1;
 }
 
-static int pptp_rcv_core(struct sock *sk,struct sk_buff *skb)
-{
-	struct pppox_sock *po=pppox_sk(sk);
-	struct pptp_opt *opt=&po->proto.pptp;
-	
-	if (!(SK_STATE(sk_pppox(po))&PPPOX_BOUND))
-		goto drop;
-	if (!po->chan.ppp){
-		printk(KERN_INFO"PPTP: received packed, but ppp is down\n");
-		goto drop;
-	}
-	spin_lock_bh(&opt->rcv_lock);
-	if (__pptp_rcv(po,skb,1)){
-		spin_unlock_bh(&opt->rcv_lock);
-		do_buf_work(po);
-	}else{
-		__net_timestamp(skb);
-		skb_queue_tail(&opt->skb_buf, skb);
-		#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
-		mod_timer(&opt->buf_timer,opt->stat->rtt/100*HZ/100000);
-		#else
-		schedule_delayed_work(&opt->buf_work,opt->stat->rtt/100*HZ/10000);
-		#endif
-		spin_unlock_bh(&opt->rcv_lock);
-	}
-	return NET_RX_SUCCESS;
-drop:
-	INC_RX_ERRORS;	
-	kfree_skb(skb);
-	return NET_RX_DROP;
-}
-
 static int pptp_rcv(struct sk_buff *skb)
 {
 	struct pptp_gre_header *header;
 	struct pppox_sock *po;
-	
+	struct pptp_opt *opt;
+
 	if (log_level>=4) printk(KERN_INFO"PPTP: pptp_rcv rx_stop=%i\n",rx_stop);
 	
 	if (rx_stop) goto drop;
@@ -905,8 +873,28 @@ static int pptp_rcv(struct sk_buff *skb)
 	}
 
 	if ((po=lookup_chan(htons(header->call_id)))) {
-		sock_hold(sk_pppox(po));
-		return sk_receive_skb(sk_pppox(po),skb,0);
+		opt=&po->proto.pptp;
+		if (!(SK_STATE(sk_pppox(po))&PPPOX_BOUND))
+			goto drop;
+		if (!po->chan.ppp){
+			printk(KERN_INFO"PPTP: received packed, but ppp is down\n");
+			goto drop;
+		}
+		spin_lock_bh(&opt->rcv_lock);
+		if (__pptp_rcv(po,skb,1)){
+			spin_unlock_bh(&opt->rcv_lock);
+			do_buf_work(po);
+		}else{
+			__net_timestamp(skb);
+			skb_queue_tail(&opt->skb_buf, skb);
+			#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+			mod_timer(&opt->buf_timer,opt->stat->rtt/100*HZ/100000);
+			#else
+			schedule_delayed_work(&opt->buf_work,opt->stat->rtt/100*HZ/10000);
+			#endif
+			spin_unlock_bh(&opt->rcv_lock);
+		}
+		return NET_RX_SUCCESS;
 	}else {
 		if (log_level>=1)
 			printk(KERN_INFO"PPTP: Discarding packet from unknown call_id %i\n",header->call_id);
@@ -1352,7 +1340,7 @@ static int pptp_create(struct socket *sock)
 	sock->state = SS_UNCONNECTED;
 	sock->ops   = &pptp_ops;
 
-	sk->sk_backlog_rcv = pppoe_rcv_core;
+	//sk->sk_backlog_rcv = pppoe_rcv_core;
 	sk->state	   = PPPOX_NONE;
 	sk->type	   = SOCK_STREAM;
 	sk->family	   = PF_PPPOX;
@@ -1404,7 +1392,7 @@ static int pptp_create(struct socket *sock)
 	sock->state = SS_UNCONNECTED;
 	sock->ops   = &pptp_ops;
 
-	sk->sk_backlog_rcv = pptp_rcv_core;
+	//sk->sk_backlog_rcv = pptp_rcv_core;
 	sk->sk_state	   = PPPOX_NONE;
 	sk->sk_type	   = SOCK_STREAM;
 	sk->sk_family	   = PF_PPPOX;
@@ -1430,7 +1418,7 @@ static int pptp_create(struct socket *sock)
   #else
 	INIT_WORK(&opt->ack_work,(void(*)(void*))ack_work,po);
 	INIT_WORK(&opt->buf_work,(void(*)(void*))buf_work,po);
-	INIT_WORK(&opt->ack_timeout_work,(void(*)(void*))ack_timeout_work,po);
+	INIT_WORK(&opt->ack_timeout_work,(void(*)(void*))_ack_timeout_work,po);
   #endif
 	opt->stat=kzalloc(sizeof(*opt->stat),GFP_KERNEL);
 	init_waitqueue_head(&opt->wait);
