@@ -150,7 +150,7 @@ size_t send_pptp_packet(int clientFd, unsigned char *packet, size_t packet_size)
 	} else {
 		/* debugging */
 		if (pptpctrl_debug) {
-			syslog(LOG_DEBUG, "CTRL: I wrote %d bytes to the client.", packet_size);
+			syslog(LOG_DEBUG, "CTRL: I wrote %i bytes to the client.", (int)packet_size);
 			syslog(LOG_DEBUG, "CTRL: Sent packet to client");
 		}
 		return bytes_written;
@@ -241,7 +241,7 @@ ssize_t read_pptp_header(int clientFd, unsigned char *packet, int *pptp_ctrl_typ
 						return(0);
 					memcpy(buffer, packet, bytes_ttl);
 				}
-				syslog(LOG_ERR, "CTRL: Error reading ctrl packet length (bytes_ttl=%d): %s", bytes_ttl, strerror(errno));
+				syslog(LOG_ERR, "CTRL: Error reading ctrl packet length (bytes_ttl=%i): %s", (int)bytes_ttl, strerror(errno));
 				return -1;
 			}
 			/* FALLTHRU */
@@ -295,7 +295,7 @@ ssize_t read_pptp_header(int clientFd, unsigned char *packet, int *pptp_ctrl_typ
 					return(0);
 				memcpy(buffer, packet, bytes_ttl);
 			}
-			syslog(LOG_ERR, "CTRL: Error reading ctrl packet (bytes_ttl=%d,length=%d): %s", bytes_ttl, length, strerror(errno));
+			syslog(LOG_ERR, "CTRL: Error reading ctrl packet (bytes_ttl=%d,length=%d): %s", (int)bytes_ttl, (int)length, strerror(errno));
 			return -1;
 		}
 		/* FALLTHRU */
@@ -666,12 +666,12 @@ u_int16_t getcall()
 	pptp_sock=socket(AF_PPPOX,SOCK_STREAM,PX_PROTO_PPTP);
 	if (pptp_sock<0)
 	{
-		syslog(LOG_ERR,"CTRL: failed to create PPTP socket\n");
+		syslog(LOG_ERR,"CTRL: failed to create PPTP socket (%s)\n",strerror(errno));
 		exit(-1);
 	}
 	if (bind(pptp_sock,(struct sockaddr*)&src_addr,sizeof(src_addr)))
 	{
-		syslog(LOG_ERR,"CTRL: failed to bind PPTP socket\n");
+		syslog(LOG_ERR,"CTRL: failed to bind PPTP socket (%s)\n",strerror(errno));
 		close(pptp_sock);
 		pptp_sock=-1;
 		exit(-1);

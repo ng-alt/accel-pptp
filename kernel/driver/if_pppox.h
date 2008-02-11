@@ -148,6 +148,7 @@ struct pptp_opt {
 	int max_window;
 	__u32 ack_sent, ack_recv;
 	__u32 seq_sent, seq_recv;
+	int ppp_flags;
 	int flags;
 	struct sk_buff_head skb_buf;
   #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
@@ -217,7 +218,11 @@ static inline struct sock *sk_pppox(struct pppox_sock *po)
 struct module;
 
 struct pppox_proto {
+	#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24)
 	int		(*create)(struct socket *sock);
+	#else
+	int		(*create)(struct net *net, struct socket *sock);
+	#endif
 	int		(*ioctl)(struct socket *sock, unsigned int cmd,
 				 unsigned long arg);
   #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,15)

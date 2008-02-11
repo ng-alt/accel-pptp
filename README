@@ -3,16 +3,22 @@ Overview
 The ACCEL-PPTP is PPTP client/server based on POPTOP (http://www.poptop.org) and PPTPCLIENT (http://pptpclient.sourceforge.net).
 ACCEL-PPTP uses kernel module to increase performance and decrease system usage.
 For more documentation about PPTP visit POPTOP web site.
-ACCEL-PPTP was successfully tested on about 800 connections and system usage has been decreased by ~50% on comparisons with the
+ACCEL-PPTP was successfully tested on about 1200 connections and system usage has been decreased by ~50% on comparisons with the
 original poptop server.
 
 
 Requirment
 ----------
 1. modern linux distribution
-1. kernel-2.6.15 or later with PPPOX support or kernel-2.4.x patched for PPPoX support (not fully tested)
+1. kernel-2.6.15 or later with PPPoX support or kernel-2.4.x patched for PPPoX support (2.4.x not fully tested)
 2. pppd-2.4.2 or later
 
+Compilation
+-----------
+Make sure you have configured kernel headers in /usr/src/linux or /lib/modules/`uname -r`/build,
+or specify other location via KDIR environment variable
+make client - compiles only client's part of package
+make server - full compilation
 
 Insallation
 -----------
@@ -42,10 +48,11 @@ See configuration example in example directory.
 
 Warning !!!
 -----------
-The mtu/mru parametr must be less then 1437.
-This driver conflicts with ip_gre driver (in kernel), so make sure that ip_gre is not built-in or loaded at run time.
-Never mix connections of accel-pptp and original pptpd, before starting accel-pptp make sure that no connections
-of original pptpd exists.
+1. This driver conflicts with ip_gre driver (in kernel), so make sure that ip_gre is not built-in or loaded at run time.
+2. Never mix connections of accel-pptp and original pptpd, before starting accel-pptp make sure that no connections
+   of original pptpd exists.
+3. If you are switching from <2.6.23 to >=2.6.23 kernel or vi”e-versa then rebuild and reinstall entire package, 
+   not just kernel module.
 
 
 Kernel module
@@ -61,6 +68,6 @@ Thanks to Kirill Yushkov for debug support and donations.
 
 
 http://accel-pptp.sourceforge.net/
-mail: xeb@mail.ru, xxebxebx@gmail.com
+mail: xeb@mail.ru, xeb@linux.vsi.ru
 ICQ: 337258064
-Jabber: xeb@city.veganet.ru
+Jabber: xeb@city.veganet.ru, xeb@linux.vsi.ru

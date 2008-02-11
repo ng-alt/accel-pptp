@@ -33,7 +33,7 @@
 #include <sys/time.h>
 #include <fcntl.h>
 
-#if HAVE_LIBWRAP
+#ifdef HAVE_LIBWRAP
 /* re-include, just in case HAVE_SYSLOG_H wasn't defined */
 #include <syslog.h>
 #include <tcpd.h>
@@ -286,7 +286,7 @@ int pptp_manager(int argc, char **argv)
 			addrsize = sizeof(client_addr);
 			clientSocket = accept(hostSocket, (struct sockaddr *) &client_addr, &addrsize);
 
-#if HAVE_LIBWRAP
+#ifdef HAVE_LIBWRAP
 			if (clientSocket != -1) {
 				struct request_info r;
 				request_init(&r, RQ_DAEMON, "pptpd", RQ_FILE, clientSocket, NULL);

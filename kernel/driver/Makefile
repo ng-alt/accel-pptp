@@ -2,17 +2,18 @@ TARGET = pptp
 OBJS = pptp.o  
 MDIR = net
 
-EXTRA_CFLAGS = -DEXPORT_SYMTAB
-CURRENT = $(shell uname -r)
-KDIR = /lib/modules/$(CURRENT)/build
-PWD = $(shell pwd)
-DEST = /lib/modules/$(CURRENT)/kernel/$(MDIR)
-KERNEL_INCLUDE := /lib/modules/$(CURRENT)/build/include
+KDIR ?= $(shell sh find_kernel_headers)
+#KDIR = /usr/src/linux-2.6.24-rc1
 
 obj-m      := $(TARGET).o
 #$(TARGET)-objs      := $(OBJS)
 
 ifneq (,$(findstring 2.4.,$(CURRENT)))
+CURRENT = $(shell uname -r)
+EXTRA_CFLAGS = -DEXPORT_SYMTAB
+PWD = $(shell pwd)
+DEST = /lib/modules/$(CURRENT)/kernel/$(MDIR)
+KERNEL_INCLUDE := /lib/modules/$(CURRENT)/build/include
 CC = gcc -c
 
 CFLAGS := -Wall -fno-strength-reduce -fomit-frame-pointer -O2 -fno-common 
@@ -21,8 +22,15 @@ CFLAGS := $(CFLAGS) -Wall -Wno-unused -Wno-multichar
 all: $(SOURCES)
 	ld  -r -o pptp_mod.o $(SOURCES)
 else
-default:
+default: kernel_headers
 	make -C $(KDIR) SUBDIRS=$(PWD) modules
+kernel_headers:
+	@if test -z "$(KDIR)"; then \
+	    echo "kernel headers not found"; \
+	    exit 1; \
+	else \
+	    echo "using \"$(KDIR)\" kernel headers"; \
+	fi
 endif
 
 $(TARGET).o: $(OBJS)
@@ -33,7 +41,7 @@ install:
 	su -c "cp -v $(TARGET)_mod.o $(DEST)/$(TARGET).o && /sbin/depmod -a"
 else
 install:
-	su -c "cp -v $(TARGET).ko $(DEST) && /sbin/depmod -a"
+	make -C $(KDIR) SUBDIRS=$(PWD) modules_install
 endif
 
 clean:

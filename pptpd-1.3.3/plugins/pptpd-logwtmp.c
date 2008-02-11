@@ -13,8 +13,9 @@
 #include <utmp.h>
 #include <string.h>
 #include "pppd.h"
+#include "config.h"
 
-char pppd_version[] = VERSION;
+char pppd_version[] = PPPD_VERSION;
 
 static char pptpd_original_ip[PATH_MAX+1];
 static bool pptpd_logwtmp_strip_domain = 0;

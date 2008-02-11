@@ -11,11 +11,11 @@ INCLUDES = -I.
 ##  warning with -Wmissing-prototypes).
 ## -Wmissing-prototypes removed (eg, Linux 2.2.6 headers
 ##  aren't up to it).
-CFLAGS = -O2 -fno-builtin -Wall -DSBINDIR='"$(sbindir)"'
+CFLAGS = -O2 -fno-builtin -Wall -DSBINDIR='"$(sbindir)"' -I$(kernel_headers)
 #CFLAGS = -O2 -fno-builtin -Wall -ansi -DSBINDIR='"$(sbindir)"'
 #CFLAGS = -O2 -fno-builtin -Wall -ansi -pedantic -Wmissing-prototypes -Werror -DSBINDIR='"$(sbindir)"'
 
-man_MANS = pptpctrl.8 pptpd.8 pptpd.conf.5
+man_MANS = pptpd.8 pptpd.conf.5
 
 EXTRA_DIST = \
 html README* ChangeLog NEWS* TODO $(man_MANS) \
@@ -38,12 +38,12 @@ sbin_PROGRAMS = pptpd pptpctrl bcrelay
 # for dependencies, so just attribute them all to pptpd.
 
 pptpd_SOURCES = \
-	 pqueue.c pptpd.c configfile.c pptpmanager.c compat.c inststr.c getopt.c getopt1.c \
-	pqueue.h compat.h configfile.h ctrlpacket.h defaults.h inststr.h our_getopt.h \
-	our_syslog.h ppphdlc.h pptpctrl.h pptpdefs.h pptpgre.h pptpmanager.h
+	pptpd.c configfile.c pptpmanager.c compat.c inststr.c getopt.c getopt1.c \
+	compat.h configfile.h ctrlpacket.h defaults.h inststr.h our_getopt.h \
+	our_syslog.h pptpdefs.h pptpmanager.h
 
 pptpctrl_SOURCES = \
-	pqueue.c pptpctrl.c ctrlpacket.c inststr.c compat.c pptpgre.c ppphdlc.c
+	pptpctrl.c ctrlpacket.c inststr.c compat.c
 
 pptpd_LDADD = $(XTRALIBS_MGR)
 
@@ -91,19 +91,12 @@ getopt1.o: getopt1.c config.h our_getopt.h
 
 inststr.o: inststr.c config.h inststr.h compat.h
 
-ppphdlc.o: ppphdlc.c config.h ppphdlc.h
-
 pptpctrl.o: pptpctrl.c config.h our_syslog.h compat.h pptpctrl.h \
-  pptpgre.h pptpdefs.h ctrlpacket.h defaults.h
+  pptpdefs.h ctrlpacket.h defaults.h
 
 pptpd.o: pptpd.c config.h our_syslog.h our_getopt.h configfile.h \
   defaults.h compat.h pptpmanager.h
 
-pptpgre.o: pptpgre.c config.h our_syslog.h ppphdlc.h pptpgre.h pptpdefs.h \
-  pptpctrl.h defaults.h pqueue.h compat.h
-
 pptpmanager.o: pptpmanager.c config.h our_syslog.h configfile.h \
   defaults.h pptpctrl.h pptpdefs.h pptpmanager.h compat.h
-
-pqueue.o: pqueue.c pqueue.h
 

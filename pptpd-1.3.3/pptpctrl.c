@@ -29,6 +29,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/socket.h>
+#include <sys/ioctl.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #ifdef HAVE_OPENPTY
@@ -46,7 +47,6 @@
 
 #include "compat.h"
 #include "pptpctrl.h"
-#include "pptpgre.h"
 #include "pptpdefs.h"
 #include "ctrlpacket.h"
 #include "defaults.h"
@@ -243,8 +243,6 @@ static void pptp_handle_ctrl_connection(char **pppaddrs, struct in_addr *inetadd
 #else
 	int init = 0;			/* Has pppd initialized the pty? */
 #endif
-	int pty_fd = -1;		/* File descriptor of pty */
-	int gre_fd = -1;		/* Network file descriptor */
 	int sig_fd = sigpipe_fd();	/* Signal pipe descriptor	*/
 
 	unsigned char packet[PPTP_MAX_CTRL_PCKT_SIZE];
@@ -257,19 +255,10 @@ static void pptp_handle_ctrl_connection(char **pppaddrs, struct in_addr *inetadd
 		FD_ZERO(&fds);
 		FD_SET(sig_fd, &fds);
 		FD_SET(clientSocket, &fds);
-		if (pty_fd != -1)
-			FD_SET(pty_fd, &fds);
-		if (gre_fd != -1 && init)
-			FD_SET(gre_fd, &fds);
 
 		/* set timeout */
-		if (encaps_gre(-1, NULL, 0) || decaps_hdlc(-1, NULL, 0)) {
-			idleTime.tv_sec = 0;
-			idleTime.tv_usec = 50000; /* don't ack immediately */
-		} else {
-			idleTime.tv_sec = IDLE_WAIT;
+		idleTime.tv_sec = IDLE_WAIT;
 			idleTime.tv_usec = 0;
-		}
 
 		/* default: do nothing */
 		send_packet = FALSE;
@@ -281,13 +270,7 @@ static void pptp_handle_ctrl_connection(char **pppaddrs, struct in_addr *inetadd
 			goto leave_clear_call;
 
 		case 0:
-			if (decaps_hdlc(-1, NULL, 0)) {
-				if(decaps_hdlc(-1, encaps_gre, gre_fd))
-					syslog(LOG_ERR, "CTRL: GRE re-xmit failed");
-			} else if (encaps_gre(-1, NULL, 0))
-				/* Pending ack and nothing else to do */
-				encaps_gre(gre_fd, NULL, 0);	/* send ack with no payload */
-			else if (echo_wait != TRUE) {
+			if (echo_wait != TRUE) {
 				/* Timeout. Start idle link detection. */
 				echo_count++;
 				if (pptpctrl_debug)
@@ -309,28 +292,6 @@ static void pptp_handle_ctrl_connection(char **pppaddrs, struct in_addr *inetadd
 				bail(SIGTERM);
 		}
 
-		/* detect startup of pppd */
-#ifndef init
-		if (!init && pty_fd != -1 && FD_ISSET(pty_fd, &fds))
-			init = 1;
-#endif
-
-		/* handle actual packets */
-
-		/* send from pty off via GRE */
-		if (pty_fd != -1 && FD_ISSET(pty_fd, &fds) && decaps_hdlc(pty_fd, encaps_gre, gre_fd) < 0) {
-			//syslog(LOG_ERR, "CTRL: PTY read or GRE write failed (pty,gre)=(%d,%d)", pty_fd, gre_fd);
-			//break;
-		}
-		/* send from GRE off to pty */
-		if (gre_fd != -1 && FD_ISSET(gre_fd, &fds) && decaps_gre(gre_fd, encaps_hdlc, pty_fd) < 0) {
-			if (gre_fd == 6 && pty_fd == 5) {
-				syslog(LOG_ERR, "CTRL: GRE-tunnel has collapsed (GRE read or PTY write failed (gre,pty)=(%d,%d))", gre_fd, pty_fd);
-			} else {
-				syslog(LOG_ERR, "CTRL: GRE read or PTY write failed (gre,pty)=(%d,%d)", gre_fd, pty_fd);
-			}
-			break;
-		}
 		/* handle control messages */
 
 		if (FD_ISSET(clientSocket, &fds)) {
@@ -347,26 +308,12 @@ static void pptp_handle_ctrl_connection(char **pppaddrs, struct in_addr *inetadd
 			case STOP_CTRL_CONN_RQST:
 				if (pptpctrl_debug)
 					syslog(LOG_DEBUG, "CTRL: Received STOP CTRL CONN request (disconnecting)");
-				if (gre_fd != -1 || pty_fd != -1)
-					syslog(LOG_WARNING, "CTRL: Request to close control connection when call is open, closing");
 				send_pptp_packet(clientSocket, rply_packet, rply_size);
 				goto leave_drop_call;
 
 			case CALL_CLR_RQST:
 				if(pptpctrl_debug)
 					syslog(LOG_DEBUG, "CTRL: Received CALL CLR request (closing call)");
-				if (gre_fd == -1 || pty_fd == -1)
-					syslog(LOG_WARNING, "CTRL: Request to close call but call not open");
-				if (gre_fd != -1) {
-					FD_CLR(gre_fd, &fds);
-					close(gre_fd);
-					gre_fd = -1;
-				}
-				if (pty_fd != -1) {
-					FD_CLR(pty_fd, &fds);
-					close(pty_fd);
-					pty_fd = -1;
-				}
 				/* violating RFC */
                                 goto leave_drop_call;
 
@@ -374,19 +321,6 @@ static void pptp_handle_ctrl_connection(char **pppaddrs, struct in_addr *inetadd
 				/* for killing off the link later (ugly) */
 				NOTE_VALUE(PAC, call_id_pair, ((struct pptp_out_call_rply *) (rply_packet))->call_id);
 				NOTE_VALUE(PNS, call_id_pair, ((struct pptp_out_call_rply *) (rply_packet))->call_id_peer);
-				if (gre_fd != -1 || pty_fd != -1) {
-					syslog(LOG_WARNING, "CTRL: Request to open call when call is already open, closing");
-					if (gre_fd != -1) {
-						FD_CLR(gre_fd, &fds);
-						close(gre_fd);
-						gre_fd = -1;
-					}
-					if (pty_fd != -1) {
-						FD_CLR(pty_fd, &fds);
-						close(pty_fd);
-						pty_fd = -1;
-					}
-				}
 
 				if (setsockopt(pptp_sock,0,PPTP_SO_WINDOW,&window,sizeof(window)))
 					syslog(LOG_WARNING,"CTRL: failed to setsockopt SO_WINDOW\n");
@@ -401,7 +335,7 @@ static void pptp_handle_ctrl_connection(char **pppaddrs, struct in_addr *inetadd
 				dst_addr.sa_addr.pptp.sin_addr=inetaddrs[1];
 
 				if (connect(pptp_sock,(struct sockaddr*)&dst_addr,sizeof(dst_addr))){
-					syslog(LOG_ERR,"CTRL: failed to connect PPTP socket\n");
+					syslog(LOG_ERR,"CTRL: failed to connect PPTP socket (%s)\n",strerror(errno));
 					exit(-1);
 					break;
 				}
@@ -415,23 +349,8 @@ static void pptp_handle_ctrl_connection(char **pppaddrs, struct in_addr *inetadd
                                       ntohs(((struct pptp_out_call_rply *) (rply_packet))->call_id));
 				/* start the call, by launching pppd */
 				syslog(LOG_INFO, "CTRL: Starting call (launching pppd, opening GRE)");
-				pty_fd = startCall(pppaddrs, inetaddrs);
+				startCall(pppaddrs, inetaddrs);
 				if (PPP_WAIT) {
-					/*fd_set pty_fds;
-					FD_ZERO(&pty_fds);
-					FD_SET(pptp_sock, &pty_fds);
-					idleTime.tv_sec = PPP_WAIT;
-					idleTime.tv_usec = 0;
-					switch (select(pptp_sock + 1, NULL, &pty_fds, NULL, &idleTime)) {
-					case -1:
-						syslog(LOG_ERR,
-						       "CTRL: pty select() failed, ignoring");
-						break;
-					case 0:
-						syslog(LOG_ERR,
-						       "CTRL: timeout waiting for first packet from our pppd");
-						break;
-					}*/
 					switch(ioctl(pptp_sock,PPPTPIOWFP,PPP_WAIT)){
 					case -1:
 						syslog(LOG_ERR,
@@ -445,8 +364,6 @@ static void pptp_handle_ctrl_connection(char **pppaddrs, struct in_addr *inetadd
 				}
 				close(pptp_sock);
 				pptp_sock=-1;
-				//if ((gre_fd = pptp_gre_init(call_id_pair, pty_fd, inetaddrs)) > maxfd)
-				//	maxfd = gre_fd;
 				break;
 
 			case ECHO_RPLY:
@@ -494,13 +411,6 @@ leave_drop_call:
 	NOTE_VALUE(PNS, call_id_pair, htons(-1));
 	close(clientSocket);
 leave_clear_call:
-	/* leave clientSocket and call_id_pair alone for bail() */
-	if (gre_fd != -1)
-		close(gre_fd);
-	gre_fd = -1;
-	if (pty_fd != -1)
-		close(pty_fd);
-	pty_fd = -1;
 	return;
 #ifdef init
 #undef init

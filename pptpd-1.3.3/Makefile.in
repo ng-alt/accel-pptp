@@ -40,7 +40,7 @@ subdir = .
 DIST_COMMON = README $(am__configure_deps) $(srcdir)/Makefile.am \
 	$(srcdir)/Makefile.in $(srcdir)/config.h.in \
 	$(top_srcdir)/configure AUTHORS COPYING ChangeLog INSTALL NEWS \
-	TODO acconfig.h install-sh missing mkinstalldirs
+	TODO install-sh missing mkinstalldirs
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/configure.in
 am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
@@ -57,15 +57,14 @@ PROGRAMS = $(sbin_PROGRAMS)
 am_bcrelay_OBJECTS = bcrelay.$(OBJEXT)
 bcrelay_OBJECTS = $(am_bcrelay_OBJECTS)
 bcrelay_LDADD = $(LDADD)
-am_pptpctrl_OBJECTS = pqueue.$(OBJEXT) pptpctrl.$(OBJEXT) \
-	ctrlpacket.$(OBJEXT) inststr.$(OBJEXT) compat.$(OBJEXT) \
-	pptpgre.$(OBJEXT) ppphdlc.$(OBJEXT)
+am_pptpctrl_OBJECTS = pptpctrl.$(OBJEXT) ctrlpacket.$(OBJEXT) \
+	inststr.$(OBJEXT) compat.$(OBJEXT)
 pptpctrl_OBJECTS = $(am_pptpctrl_OBJECTS)
 am__DEPENDENCIES_1 =
 pptpctrl_DEPENDENCIES = $(am__DEPENDENCIES_1)
-am_pptpd_OBJECTS = pqueue.$(OBJEXT) pptpd.$(OBJEXT) \
-	configfile.$(OBJEXT) pptpmanager.$(OBJEXT) compat.$(OBJEXT) \
-	inststr.$(OBJEXT) getopt.$(OBJEXT) getopt1.$(OBJEXT)
+am_pptpd_OBJECTS = pptpd.$(OBJEXT) configfile.$(OBJEXT) \
+	pptpmanager.$(OBJEXT) compat.$(OBJEXT) inststr.$(OBJEXT) \
+	getopt.$(OBJEXT) getopt1.$(OBJEXT)
 pptpd_OBJECTS = $(am_pptpd_OBJECTS)
 pptpd_DEPENDENCIES = $(am__DEPENDENCIES_1)
 DEFAULT_INCLUDES = -I. -I$(srcdir) -I.
@@ -104,7 +103,7 @@ AUTOMAKE = @AUTOMAKE@
 AWK = @AWK@
 CC = @CC@
 CCDEPMODE = @CCDEPMODE@
-CFLAGS = -O2 -fno-builtin -Wall -DSBINDIR='"$(sbindir)"'
+CFLAGS = -O2 -fno-builtin -Wall -DSBINDIR='"$(sbindir)"' -I$(kernel_headers)
 CPP = @CPP@
 CPPFLAGS = @CPPFLAGS@
 CYGPATH_W = @CYGPATH_W@
@@ -116,7 +115,6 @@ ECHO_T = @ECHO_T@
 EGREP = @EGREP@
 EXEEXT = @EXEEXT@
 GREP = @GREP@
-HAVE_OPENPTY = @HAVE_OPENPTY@
 INSTALL_DATA = @INSTALL_DATA@
 INSTALL_PROGRAM = @INSTALL_PROGRAM@
 INSTALL_SCRIPT = @INSTALL_SCRIPT@
@@ -163,6 +161,7 @@ htmldir = @htmldir@
 includedir = @includedir@
 infodir = @infodir@
 install_sh = @install_sh@
+kernel_headers = @kernel_headers@
 libdir = @libdir@
 libexecdir = @libexecdir@
 localedir = @localedir@
@@ -184,7 +183,7 @@ AUTOMAKE_OPTIONS = no-dependencies foreign
 INCLUDES = -I.
 #CFLAGS = -O2 -fno-builtin -Wall -ansi -DSBINDIR='"$(sbindir)"'
 #CFLAGS = -O2 -fno-builtin -Wall -ansi -pedantic -Wmissing-prototypes -Werror -DSBINDIR='"$(sbindir)"'
-man_MANS = pptpctrl.8 pptpd.8 pptpd.conf.5
+man_MANS = pptpd.8 pptpd.conf.5
 EXTRA_DIST = \
 html README* ChangeLog NEWS* TODO $(man_MANS) \
 samples/chap-secrets samples/options.pptpd samples/pptpd.conf \
@@ -203,12 +202,12 @@ debian/po/templates.pot
 # Header files are only used to determine what to put in a distribution, not
 # for dependencies, so just attribute them all to pptpd.
 pptpd_SOURCES = \
-	 pqueue.c pptpd.c configfile.c pptpmanager.c compat.c inststr.c getopt.c getopt1.c \
-	pqueue.h compat.h configfile.h ctrlpacket.h defaults.h inststr.h our_getopt.h \
-	our_syslog.h ppphdlc.h pptpctrl.h pptpdefs.h pptpgre.h pptpmanager.h
+	pptpd.c configfile.c pptpmanager.c compat.c inststr.c getopt.c getopt1.c \
+	compat.h configfile.h ctrlpacket.h defaults.h inststr.h our_getopt.h \
+	our_syslog.h pptpdefs.h pptpmanager.h
 
 pptpctrl_SOURCES = \
-	pqueue.c pptpctrl.c ctrlpacket.c inststr.c compat.c pptpgre.c ppphdlc.c
+	pptpctrl.c ctrlpacket.c inststr.c compat.c
 
 pptpd_LDADD = $(XTRALIBS_MGR)
 pptpctrl_LDADD = $(XTRALIBS_CTRL)
@@ -262,7 +261,7 @@ config.h: stamp-h1
 stamp-h1: $(srcdir)/config.h.in $(top_builddir)/config.status
 	@rm -f stamp-h1
 	cd $(top_builddir) && $(SHELL) ./config.status config.h
-$(srcdir)/config.h.in:  $(am__configure_deps) $(top_srcdir)/acconfig.h
+$(srcdir)/config.h.in:  $(am__configure_deps) 
 	cd $(top_srcdir) && $(AUTOHEADER)
 	rm -f stamp-h1
 	touch $@
@@ -720,21 +719,14 @@ getopt1.o: getopt1.c config.h our_getopt.h
 
 inststr.o: inststr.c config.h inststr.h compat.h
 
-ppphdlc.o: ppphdlc.c config.h ppphdlc.h
-
 pptpctrl.o: pptpctrl.c config.h our_syslog.h compat.h pptpctrl.h \
-  pptpgre.h pptpdefs.h ctrlpacket.h defaults.h
+  pptpdefs.h ctrlpacket.h defaults.h
 
 pptpd.o: pptpd.c config.h our_syslog.h our_getopt.h configfile.h \
   defaults.h compat.h pptpmanager.h
 
-pptpgre.o: pptpgre.c config.h our_syslog.h ppphdlc.h pptpgre.h pptpdefs.h \
-  pptpctrl.h defaults.h pqueue.h compat.h
-
 pptpmanager.o: pptpmanager.c config.h our_syslog.h configfile.h \
   defaults.h pptpctrl.h pptpdefs.h pptpmanager.h compat.h
-
-pqueue.o: pqueue.c pqueue.h
 # Tell versions [3.59,3.63) of GNU make to not export all variables.
 # Otherwise a system limit (for SysV at least) may be exceeded.
 .NOEXPORT:

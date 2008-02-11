@@ -32,6 +32,23 @@ denial of service protection feature.
 Equivalent to the command line 
 .B --stimeout
 option.
+
+.TP
+.BI "ptimeout " miliseconds
+number of miliseconds to wait for a PPTP "ack" packet after transmitting
+was stoped due to sliding window exceeded. The default is 1000 miliseconds.
+Equivalent to the command line 
+.B --ptimeout
+option.
+
+.TP
+.BI "keep"
+Keep connections after pptpd daemon exit. Default do not keep connections,
+all connections would be terminated on pptpd exit.
+Equivalent to the command line 
+.B --keep
+option.
+
 .TP
 .B debug
 turns on debugging mode, sending debugging information to 

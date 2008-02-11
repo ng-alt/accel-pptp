@@ -22,9 +22,9 @@ Type: 'pptpd -h' for options you may specify on the command line.
 A sample config file is in samples/
 
 For more help look in html/
-or visit the Poptop web site at: http://poptop.sourceforge.net/
+or visit the Poptop web site at: http://accel-pptp.sourceforge.net/
 
 
 Good Luck!
 
--Poptop Development Team
+accel-pptp Development Team

@@ -3,24 +3,38 @@ PPPD := $(patsubst pppd,,$(PPPD))
 PPPD := $(patsubst version,,$(PPPD))
 PPPD := $(strip $(PPPD))
 
-default:
-	if [ -z "$(PPPD)" ]; then echo pppd not found; exit -1; fi
+default: module plugin pptpd
+client: module plugin
+server: default
+
+module:
 	echo Building kernel module
 	(cd kernel/driver; make )
-	echo
-	echo Building pppd plugin
-	sed -i -e "s:\\(#define[ \\t]*PPP_VERSION[ \\t]*\\)\".*\":\\1\"$(PPPD)\":" "pppd_plugin/src/pppd/patchlevel.h"
-	(cd pppd_plugin; ./configure && make)
-	echo
-	echo Building pptpd
-	sed -i -e "s:\\(#define[ \\t]*VERSION[ \\t]*\\)\".*\":\\1\"$(PPPD)\":" "pptpd-1.3.3/plugins/patchlevel.h"
-	(cd pptpd-1.3.3; ./configure --prefix=/usr && make)
 
-client_install: default
-	install -m 0644 pppd_plugin/src/.libs/pptp.so.0.0.0 /usr/lib/pppd/$(PPPD)/pptp.so
+plugin: pppd_plugin/Makefile
+	echo Building pppd plugin
+	(cd pppd_plugin; make)
+
+pptpd: pptpd-1.3.3/Makefile
+	echo Building pptpd
+	(cd pptpd-1.3.3; make)
+
+pppd_plugin/Makefile: pptpd-1.3.3/Makefile
+	(cd pppd_plugin; ./configure)
+
+pptpd-1.3.3/Makefile:
+	(cd pptpd-1.3.3; ./configure)
+
+
+module_install: module
 	(cd kernel/driver; make install)
 
-server_install: client_install
+plugin_install: plugin
+	install -m 0644 pppd_plugin/src/.libs/pptp.so.0.0.0 /usr/lib/pppd/$(PPPD)/pptp.so
+
+client_install: module_install plugin_install
+
+server_install: server module_install plugin_install
 	(cd pptpd-1.3.3; make install)
 
 clean:

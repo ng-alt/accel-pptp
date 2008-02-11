@@ -44,7 +44,6 @@
 #include "pppd/ipcp.h"
 #include "pppd/ccp.h"
 #include "pppd/pathnames.h"
-#include "pppd/patchlevel.h"
 
 #include "pptp_callmgr.h"
 #include <net/if.h>
@@ -58,7 +57,7 @@
 
 extern char** environ;
 
-char pppd_version[] = PPP_VERSION;
+char pppd_version[] = PPPD_VERSION;
 extern int new_style_driver;
 
 
@@ -77,8 +76,7 @@ int call_ID;
 //static struct in_addr get_ip_address(char *name);
 static int open_callmgr(int call_id,struct in_addr inetaddr, char *phonenr,int window);
 static void launch_callmgr(int call_is,struct in_addr inetaddr, char *phonenr,int window);
-static int get_call_id(int sock, pid_t gre, pid_t pppd,
-		 u_int16_t *call_id, u_int16_t *peer_call_id);
+static int get_call_id(int sock, pid_t gre, pid_t pppd, u_int16_t *peer_call_id);
 
 //static int pptp_devname_hook(char *cmd, char **argv, int doit);
 static option_t Options[] =
@@ -126,7 +124,7 @@ static int pptp_start_server(void)
 }
 static int pptp_start_client(void)
 {
-	int r,len;
+	int len;
 	struct sockaddr_pppox src_addr,dst_addr;
 	struct hostent *hostinfo;
 
@@ -192,8 +190,7 @@ static int pptp_start_client(void)
          */
         callmgr_sock = open_callmgr(src_addr.sa_addr.pptp.call_id,dst_addr.sa_addr.pptp.sin_addr, pptp_phone,pptp_window);
         /* Exchange PIDs, get call ID */
-    } while (get_call_id(callmgr_sock, getpid(), getpid(),
-               &r, &dst_addr.sa_addr.pptp.call_id) < 0);
+    } while (get_call_id(callmgr_sock, getpid(), getpid(), &dst_addr.sa_addr.pptp.call_id) < 0);
 
 	if (connect(pptp_fd,(struct sockaddr*)&dst_addr,sizeof(dst_addr)))
 	{
@@ -291,7 +288,7 @@ static void launch_callmgr(int call_id,struct in_addr inetaddr, char *phonenr,in
 /*** exchange data with the call manager  *************************************/
 /* XXX need better error checking XXX */
 static int get_call_id(int sock, pid_t gre, pid_t pppd,
-		 u_int16_t *call_id, u_int16_t *peer_call_id)
+		u_int16_t *peer_call_id)
 {
     u_int16_t m_call_id, m_peer_call_id;
     /* write pid's to socket */
@@ -320,7 +317,6 @@ static int get_call_id(int sock, pid_t gre, pid_t pppd,
      * (James: on the other hand, if the route to the peer goes away, we
      * wouldn't get told by read() or write() for quite some time.)
      */
-    *call_id = m_call_id;
     *peer_call_id = m_peer_call_id;
     return 0;
 }
@@ -334,8 +330,8 @@ void plugin_init(void)
 
     add_options(Options);
 
-    info("PPTP plugin version %s compiled against pppd %s",
-	 "0.7.7", PPP_VERSION);
+    info("PPTP plugin version %s compiled for pppd-%s, linux-%s",
+	 VERSION, PPPD_VERSION,KERNELVERSION);
 
     the_channel = &pptp_channel;
     modem = 0;

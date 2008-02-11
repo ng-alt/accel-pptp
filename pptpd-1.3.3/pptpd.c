@@ -84,9 +84,14 @@ static void launch_bcrelay();
 static pid_t bcrelayfork;
 #endif
 
+static void showversion()
+{
+	printf("accel-pptpd v%s  ", VERSION);
+	printf("compiled for pppd-%s, linux-%s\n",PPPD_VERSION,KERNELVERSION);
+}
 static void showusage(char *prog)
 {
-	printf("\npptpd v%s\n", VERSION);
+	showversion();
 	printf("Usage: pptpd [options], where options are:\n\n");
 #ifdef BCRELAY
 	printf(" [-b] [--bcrelay if]       Use broadcast relay for broadcasts comming from.\n");
@@ -129,10 +134,6 @@ static void showusage(char *prog)
 }
 
 
-static void showversion()
-{
-	printf("pptpd v%s\n", VERSION);
-}
 
 int main(int argc, char **argv)
 {
@@ -151,6 +152,7 @@ int main(int argc, char **argv)
 
 	/* open a connection to the syslog daemon */
 	openlog("pptpd", LOG_PID, PPTP_FACILITY);
+	syslog(LOG_ERR, "MGR: Config file not found!");
 
 	/* process command line options */
 	while (1) {
@@ -166,23 +168,23 @@ int main(int argc, char **argv)
 #ifdef BCRELAY
 			{"bcrelay", 1, 0, 0},
 #endif
-			{"conf", 1, 0, 0},
-			{"debug", 0, 0, 0},
-			{"ppp", 1, 0, 0},
-			{"fg", 0, 0, 0},
-			{"help", 0, 0, 0},
-			{"noipparam", 0, 0, 0},
-			{"listen", 1, 0, 0},
-			{"option", 1, 0, 0},
-			{"pidfile", 1, 0, 0},
-			{"speed", 1, 0, 0},
-			{"stimeout", 1, 0, 0},
-			{"ptimeout", 1, 0, 0},
-			{"version", 0, 0, 0},
-			{"logwtmp", 0, 0, 0},
-			{"connections", 1, 0, 0},
-			{"delegate", 0, 0, 0},
-			{"keep", 0, 0, 0},
+			{"conf", 1, 0, 'c'},
+			{"debug", 0, 0, 'd'},
+			{"ppp", 1, 0, 'e'},
+			{"fg", 0, 0, 'f'},
+			{"help", 0, 0, 'h'},
+			{"noipparam", 0, 0, 'i'},
+			{"listen", 1, 0, 'l'},
+			{"option", 1, 0, 'o'},
+			{"pidfile", 1, 0, 'p'},
+			{"speed", 1, 0, 's'},
+			{"stimeout", 1, 0, 't'},
+			{"ptimeout", 1, 0, 'T'},
+			{"version", 0, 0, 'v'},
+			{"logwtmp", 0, 0, 'w'},
+			{"connections", 1, 0, 'C'},
+			{"delegate", 0, 0, 'D'},
+			{"keep", 0, 0, 'k'},
 			{0, 0, 0, 0}
 		};
 
@@ -275,7 +277,6 @@ int main(int argc, char **argv)
 			break;
 		case 'k': /* --keep */
 			keep_connections = 1;
-			syslog(LOG_ERR, "MGR:keep_connections");
 			break;
 
 		case 'c': /* --conf */
@@ -415,6 +416,8 @@ int main(int argc, char **argv)
 		return 1;
 	}
 #endif
+
+	syslog(LOG_INFO, "accel-pptpd-%s compiled for pppd-%s, linux-%s\n",VERSION,PPPD_VERSION,KERNELVERSION);
 
 	if (!foreground) {
 #if HAVE_DAEMON

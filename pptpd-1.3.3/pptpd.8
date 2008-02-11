@@ -89,8 +89,13 @@ feature.
 
 .TP
 \fB-T\fR|\fB--ptimeout \fImilliseconds
-specifies the number of milliseconds to wait for a acknowledge packet before
-continuing transfer.
+number of miliseconds to wait for a PPTP "ack" packet after transmitting
+was stoped due to sliding window exceeded. The default is 1000 miliseconds.
+
+.TP
+\fB-k\fR|\fB--keep
+Keep connections after pptpd daemon exit. Default do not keep connections,
+all connections would be terminated on pptpd exit.
 
 .TP
 .BR -w | --logwtmp
@@ -197,3 +202,4 @@ SourceForge at
 .BR pppd (8),
 .BR pptpd (8),
 .BR pptpd.conf (5).
+.BR pppd-pptp (8)
