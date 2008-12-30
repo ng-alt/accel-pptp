@@ -1,7 +1,6 @@
 plugin "pptp.so"
 pptp_server 192.168.10.10
 #pptp_phone 12345
-pptp_window 50
 name test
 remotename pptp
 file /etc/ppp/options.pptp

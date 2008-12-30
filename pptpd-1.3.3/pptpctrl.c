@@ -322,9 +322,6 @@ static void pptp_handle_ctrl_connection(char **pppaddrs, struct in_addr *inetadd
 				NOTE_VALUE(PAC, call_id_pair, ((struct pptp_out_call_rply *) (rply_packet))->call_id);
 				NOTE_VALUE(PNS, call_id_pair, ((struct pptp_out_call_rply *) (rply_packet))->call_id_peer);
 
-				if (setsockopt(pptp_sock,0,PPTP_SO_WINDOW,&window,sizeof(window)))
-					syslog(LOG_WARNING,"CTRL: failed to setsockopt SO_WINDOW\n");
-
 				pptp_timeout*=1000;
 				if (setsockopt(pptp_sock,0,PPTP_SO_TIMEOUT,&pptp_timeout,sizeof(pptp_timeout)))
 					syslog(LOG_WARNING,"CTRL: failed to setsockopt SO_TIMEOUT\n");

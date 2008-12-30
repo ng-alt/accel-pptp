@@ -26,7 +26,6 @@
 #include <linux/if_ether.h>
 #include <linux/if.h>
 #include <linux/netdevice.h>
-#include <asm/semaphore.h>
 #include <linux/ppp_channel.h>
 #endif /* __KERNEL__ */
 
@@ -128,7 +127,6 @@ struct pppoe_hdr {
 
 /* Socket options */
 #define PPTP_SO_TIMEOUT 1
-#define PPTP_SO_WINDOW  2
 
 
 #ifdef __KERNEL__
@@ -141,30 +139,23 @@ struct pppoe_opt {
 };
 #endif
 struct pptp_opt {
+	struct rb_node callid_rb_node;
 	struct pptp_addr	src_addr;
 	struct pptp_addr	dst_addr;
 	int timeout;
-	int window;
-	int max_window;
 	__u32 ack_sent, ack_recv;
 	__u32 seq_sent, seq_recv;
 	int ppp_flags;
 	int flags;
 	struct sk_buff_head skb_buf;
   #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
-	struct tq_struct ack_work;
 	struct tq_struct buf_work; //check bufferd packets work
-	struct tq_struct ack_timeout_work; //wait ack timeout work
 	struct timer_list buf_timer;
-	struct timer_list ack_timeout_timer; //wait ack timeout work
 	#else
-	struct work_struct ack_work;  //send ack work
   #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,20)
 	struct delayed_work buf_work; //check bufferd packets work
-	struct delayed_work ack_timeout_work; //wait ack timeout work
   #else
 	struct work_struct buf_work; //check bufferd packets work
-	struct work_struct ack_timeout_work; //wait ack timeout work
   #endif
   #endif 
 	struct gre_statistics *stat;

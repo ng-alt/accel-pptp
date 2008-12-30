@@ -65,7 +65,6 @@ char *pptp_server = NULL;
 char *pptp_client = NULL;
 char *pptp_phone = NULL;
 int pptp_sock=-1;
-int pptp_window=10;
 int pptp_timeout=100000;
 struct in_addr localbind = { INADDR_NONE };
 
@@ -89,8 +88,6 @@ static option_t Options[] =
       "PPTP socket" },
     { "pptp_phone", o_string, &pptp_phone,
       "PPTP Phone number" },
-    { "pptp_window", o_int, &pptp_window,
-      "PPTP sliding window size" },
     { "pptp_timeout", o_int, &pptp_timeout,
       "timeout for waiting reordered packets and acks"},
     { NULL }
@@ -171,8 +168,6 @@ static int pptp_start_client(void)
 		fatal("PPTP: failed to create PPTP socket (%s)\n",strerror(errno));
 		return -1;
 	}
-	if (setsockopt(pptp_fd,0,PPTP_SO_WINDOW,&pptp_window,sizeof(pptp_window)))
-		warn("PPTP: failed to setsockopt PPTP_SO_WINDOW (%s)\n",strerror(errno));
 	if (setsockopt(pptp_fd,0,PPTP_SO_TIMEOUT,&pptp_timeout,sizeof(pptp_timeout)))
 		warn("PPTP: failed to setsockopt PPTP_SO_TIMEOUT (%s)\n",strerror(errno));
 	if (bind(pptp_fd,(struct sockaddr*)&src_addr,sizeof(src_addr)))
@@ -188,7 +183,7 @@ static int pptp_start_client(void)
         /*
          * Open connection to call manager (Launch call manager if necessary.)
          */
-        callmgr_sock = open_callmgr(src_addr.sa_addr.pptp.call_id,dst_addr.sa_addr.pptp.sin_addr, pptp_phone,pptp_window);
+        callmgr_sock = open_callmgr(src_addr.sa_addr.pptp.call_id,dst_addr.sa_addr.pptp.sin_addr, pptp_phone,50);
         /* Exchange PIDs, get call ID */
     } while (get_call_id(callmgr_sock, getpid(), getpid(), &dst_addr.sa_addr.pptp.call_id) < 0);
 
