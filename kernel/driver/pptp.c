@@ -22,7 +22,6 @@
 #include <linux/ppp_channel.h>
 #include <linux/ppp_defs.h>
 #include <linux/if_ppp.h>
-#include "if_pppox.h"
 #include <linux/notifier.h>
 #include <linux/file.h>
 #include <linux/in.h>
@@ -31,11 +30,11 @@
 #include <linux/netfilter_ipv4.h>
 #include <linux/version.h>
 #include <linux/spinlock.h>
-#include <linux/bitmap.h>
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 #include <linux/tqueue.h>
 #include <linux/timer.h>
+#include <asm/bitops.h>
 #else
 #include <linux/workqueue.h>
 #endif
@@ -48,9 +47,11 @@
 
 #include <asm/uaccess.h>
 
+#include "if_pppox.h"
+
 #define DEBUG
 
-#define PPTP_DRIVER_VERSION "0.8.1"
+#define PPTP_DRIVER_VERSION "0.8.2"
 
 MODULE_DESCRIPTION("Point-to-Point Tunneling Protocol for Linux");
 MODULE_AUTHOR("Kozlov D. (xeb@mail.ru)");
@@ -76,30 +77,6 @@ MODULE_PARM_DESC(log_level,"Logging level (default=0)");
 #define SC_RCV_BITS	(SC_RCV_B7_1|SC_RCV_B7_0|SC_RCV_ODDP|SC_RCV_EVNP)
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
-#define __wait_event_timeout(wq, condition, ret)			\
-do {									\
-	wait_queue_t __wait;						\
-	init_waitqueue_entry(&__wait, current);				\
-									\
-	for (;;) {							\
-		set_current_state(TASK_UNINTERRUPTIBLE);		\
-		if (condition)						\
-			break;						\
-		ret = schedule_timeout(ret);				\
-		if (!ret)						\
-			break;						\
-	}								\
-	current->state = TASK_RUNNING;					\
-	remove_wait_queue(&wq, &__wait);				\
-} while (0)
-#define wait_event_timeout(wq, condition, timeout)			\
-({									\
-	long __ret = timeout;						\
-	if (!(condition)) 						\
-		__wait_event_timeout(wq, condition, __ret);		\
-	__ret;								\
-})
-
 #define INIT_TIMER(_timer,_routine,_data) \
 do { \
 	(_timer)->function=_routine; \
@@ -118,11 +95,9 @@ static inline void skb_get_timestamp(const struct sk_buff *skb, struct timeval *
 {
 	*stamp = skb->stamp;
 }
-static inline void __net_timestamp(struct sk_buff *skb, const struct timeval *stamp)
+static inline void __net_timestamp(struct sk_buff *skb)
 {
-	struct timeval tv;
-	do_gettimeofday(&tv);
-	skb->stamp = *stamp;
+	do_gettimeofday(&skb->stamp);
 }
 #endif
 
@@ -218,15 +193,15 @@ static int add_chan(struct pppox_sock *sock)
 	
 	if (!sock->proto.pptp.src_addr.call_id)
 	{
-	    call_id=find_next_bit(callid_bitmap,MAX_CALLID,call_id);
+	    call_id=find_next_zero_bit(callid_bitmap,MAX_CALLID,call_id);
 	    if (call_id==MAX_CALLID)
-				call_id=find_next_bit(callid_bitmap,MAX_CALLID,1);
+				call_id=find_next_zero_bit(callid_bitmap,MAX_CALLID,1);
 	    sock->proto.pptp.src_addr.call_id=call_id;
 	}
-	else if (!test_bit(sock->proto.pptp.src_addr.call_id,callid_bitmap))
+	else if (test_bit(sock->proto.pptp.src_addr.call_id,callid_bitmap))
 		return -1;
 	
-	clear_bit(sock->proto.pptp.src_addr.call_id,callid_bitmap);
+	set_bit(sock->proto.pptp.src_addr.call_id,callid_bitmap);
 	callid_sock[sock->proto.pptp.src_addr.call_id]=sock;
 	
 	write_unlock_bh(&chan_lock);
@@ -237,7 +212,7 @@ static int add_chan(struct pppox_sock *sock)
 static void del_chan(struct pppox_sock *sock)
 {
 	write_lock_bh(&chan_lock);
-	set_bit(sock->proto.pptp.src_addr.call_id,callid_bitmap);
+	clear_bit(sock->proto.pptp.src_addr.call_id,callid_bitmap);
 	callid_sock[sock->proto.pptp.src_addr.call_id]=NULL;
 	write_unlock_bh(&chan_lock);
 }
@@ -355,7 +330,7 @@ static int pptp_xmit(struct ppp_channel *chan, struct sk_buff *skb)
 	if (ack_sent != seq_recv)	{
 	/* send ack with this message */
 		hdr->ver |= PPTP_GRE_FLAG_A;
-		hdr->ack  = seq_recv;
+		hdr->ack  = htonl(seq_recv);
 		#ifdef DEBUG
 		if (log_level>=3 && opt->seq_sent<=log_packets)
 			printk(" ack=%i",opt->seq_recv);
@@ -413,13 +388,13 @@ static int pptp_xmit(struct ppp_channel *chan, struct sk_buff *skb)
 	ip_select_ident(iph, &rt->u.dst, NULL);
 	ip_send_check(iph);
 
-	#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,25)
+	#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+ 	err = NF_HOOK(PF_INET, NF_IP_LOCAL_OUT, skb, NULL, rt->u.dst.dev, ip_send);
+	#elif LINUX_VERSION_CODE < KERNEL_VERSION(2,6,25)
  	err = NF_HOOK(PF_INET, NF_IP_LOCAL_OUT, skb, NULL, rt->u.dst.dev, dst_output);
  	#else
  	err = ip_local_out(skb);
  	#endif
-
-	wake_up(&opt->wait);
 
 	if (err == NET_XMIT_SUCCESS || err == NET_XMIT_CN) {
 		opt->stat->tx_sent++;
@@ -803,8 +778,12 @@ static int pptp_connect(struct socket *sock, struct sockaddr *uservaddr,
 		sk_setup_caps(sk, &rt->u.dst);
 	}
 	#endif
+	#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+	po->chan.mtu=PPP_MTU;
+	#else
 	po->chan.mtu=dst_mtu(&rt->u.dst);
 	if (!po->chan.mtu) po->chan.mtu=PPP_MTU;
+	#endif
 	po->chan.mtu-=PPTP_HEADER_OVERHEAD;
 
 	po->chan.hdrlen=2+sizeof(struct pptp_gre_header);
@@ -924,8 +903,6 @@ static int pptp_release(struct socket *sock)
 		printk(KERN_INFO"PPTP[%i]: release\n",opt->src_addr.call_id);
 	#endif
 
-	wake_up(&opt->wait);
-
 	if (opt->src_addr.sin_addr.s_addr) {
 		#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 		del_timer(&opt->buf_timer);
@@ -1040,7 +1017,6 @@ static int pptp_create(struct socket *sock)
 	INIT_TQUEUE(&opt->buf_work,(void(*)(void*))buf_work,po);
 	INIT_TIMER(&opt->buf_timer,(void(*)(unsigned long))buf_timer,(long int)po);
 	opt->stat=kzalloc(sizeof(*opt->stat),GFP_KERNEL);
-	init_waitqueue_head(&opt->wait);
 	spin_lock_init(&opt->xmit_lock);
 	spin_lock_init(&opt->rcv_lock);
 
@@ -1096,7 +1072,6 @@ static int pptp_create(struct net *net, struct socket *sock)
 	INIT_WORK(&opt->buf_work,(void(*)(void*))buf_work,po);
   #endif
 	opt->stat=kzalloc(sizeof(*opt->stat),GFP_KERNEL);
-	init_waitqueue_head(&opt->wait);
 	spin_lock_init(&opt->xmit_lock);
 	spin_lock_init(&opt->rcv_lock);
 
@@ -1106,25 +1081,6 @@ out:
 }
 #endif
 
-
-static int pptp_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
-{
-	struct sock *sk = sock->sk;
-	struct pppox_sock *po = pppox_sk(sk);
-	struct pptp_opt *opt=&po->proto.pptp;
-	int res=-EINVAL;
-
-	switch (cmd) {
-	case PPPTPIOWFP:
-		release_sock(sk);
-		res=wait_event_timeout(opt->wait,opt->seq_sent||SK_STATE(sk) == PPPOX_DEAD,arg*HZ);
-		res=(res&&res<HZ)?1:res/HZ;
-		lock_sock(sk);
-		break;
-	}
-
-	return res;
-}
 
 static int pptp_ppp_ioctl(struct ppp_channel *chan, unsigned int cmd,
 			   unsigned long arg)
@@ -1160,7 +1116,6 @@ static int pptp_ppp_ioctl(struct ppp_channel *chan, unsigned int cmd,
 
 static struct pppox_proto pppox_pptp_proto = {
     .create	= pptp_create,
-    .ioctl	= pptp_ioctl,
 	  #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,15)
     .owner	= THIS_MODULE,
     #endif
@@ -1208,10 +1163,21 @@ static int pptp_init_module(void)
 		printk(KERN_INFO "PPTP: can't register pppox_proto\n");
 		goto out_unregister_sk_proto;
 	}
+	
+	
+	//assuming PAGESIZE is 4096 bytes
+	callid_bitmap=(unsigned long*)__get_free_pages(GFP_KERNEL,1);
+	memset(callid_bitmap,0,PAGE_SIZE>>1);
 
-	callid_bitmap=kmalloc(MAX_CALLID/sizeof(unsigned long),GFP_KERNEL);
-	bitmap_fill(callid_bitmap,MAX_CALLID);
-	callid_sock=kzalloc(MAX_CALLID*sizeof(void*),GFP_KERNEL);
+	#if (BITS_PER_LONG == 32)
+	callid_sock=(struct pppox_sock **)__get_free_pages(GFP_KERNEL,6);
+	memset(callid_sock,0,PAGE_SIZE>>6);
+	#elif (BITS_PER_LONG == 64)
+        callid_sock=(struct pppox_sock **)__get_free_pages(GFP_KERNEL,7);
+        memset(callid_sock,0,PAGE_SIZE>>7);
+        #else
+        #error unknown size of LONG
+        #endif
 
 out:
 	return err;
@@ -1219,7 +1185,10 @@ out_unregister_sk_proto:
 	#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
 	proto_unregister(&pptp_sk_proto);
 	#endif
+
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
 out_inet_del_protocol:
+#endif
 
 	#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 	inet_del_protocol(&net_pptp_protocol);
@@ -1231,7 +1200,11 @@ out_inet_del_protocol:
 
 static void pptp_exit_module(void)
 {
+	#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+	flush_scheduled_tasks();
+	#else
 	flush_scheduled_work();
+	#endif
 
 	unregister_pppox_proto(PX_PROTO_PPTP);
 	#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
@@ -1240,10 +1213,15 @@ static void pptp_exit_module(void)
 	proto_unregister(&pptp_sk_proto);
 	inet_del_protocol(&net_pptp_protocol, IPPROTO_GRE);
 	#endif
-	if (callid_bitmap) kfree(callid_bitmap);
-	if (callid_sock) kfree(callid_sock);
+	if (callid_bitmap) free_pages((unsigned long)callid_bitmap,1);
+	if (callid_sock) {
+	    #if (BITS_PER_LONG == 32)
+	    free_pages((unsigned long)callid_sock,6);
+	    #elif (BITS_PER_LONG == 64)
+	    free_pages((unsigned long)callid_sock,7);
+	    #endif
+	}
 }
-
 
 module_init(pptp_init_module);
 module_exit(pptp_exit_module);

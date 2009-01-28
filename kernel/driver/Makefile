@@ -1,29 +1,29 @@
 TARGET = pptp
-OBJS = pptp.o  
-MDIR = net
+MDIR = extra
 
 KDIR ?= $(shell sh find_kernel_headers)
-#KDIR = /usr/src/linux-2.6.24-rc1
 
 obj-m      := $(TARGET).o
-#$(TARGET)-objs      := $(OBJS)
+
+CURRENT = $(shell uname -r)
+
+
+ifndef MAKING_MODULES
+all: kernel_headers
+	make -C $(KDIR) SUBDIRS=$(PWD) modules
+endif
 
 ifneq (,$(findstring 2.4.,$(CURRENT)))
-CURRENT = $(shell uname -r)
-EXTRA_CFLAGS = -DEXPORT_SYMTAB
-PWD = $(shell pwd)
-DEST = /lib/modules/$(CURRENT)/kernel/$(MDIR)
-KERNEL_INCLUDE := /lib/modules/$(CURRENT)/build/include
-CC = gcc -c
-
-CFLAGS := -Wall -fno-strength-reduce -fomit-frame-pointer -O2 -fno-common 
-CFLAGS := $(CFLAGS) -D__KERNEL__ -DMODULE -I$(KERNEL_INCLUDE) -DMOD_VERSIONS -include $(KERNEL_INCLUDE)/linux/modversions.h
-CFLAGS := $(CFLAGS) -Wall -Wno-unused -Wno-multichar
-all: $(SOURCES)
-	ld  -r -o pptp_mod.o $(SOURCES)
+install:
+	@if test ! -d /lib/modules/$(CURRENT)/extra; then \
+	    mkdir /lib/modules/$(CURRENT)/extra; \
+	fi; \
+	cp -v $(TARGET).o /lib/modules/$(CURRENT)/extra/$(TARGET).o && /sbin/depmod -a
 else
-default: kernel_headers
-	make -C $(KDIR) SUBDIRS=$(PWD) modules
+install:	
+	make -C $(KDIR) SUBDIRS=$(PWD) modules_install
+endif
+
 kernel_headers:
 	@if test -z "$(KDIR)"; then \
 	    echo "kernel headers not found"; \
@@ -31,22 +31,11 @@ kernel_headers:
 	else \
 	    echo "using \"$(KDIR)\" kernel headers"; \
 	fi
-endif
 
-$(TARGET).o: $(OBJS)
-	$(LD) $(LD_RFLAG) -r -o $@ $(OBJS)
-
-ifneq (,$(findstring 2.4.,$(CURRENT)))
-install:
-	su -c "cp -v $(TARGET)_mod.o $(DEST)/$(TARGET).o && /sbin/depmod -a"
-else
-install:
-	make -C $(KDIR) SUBDIRS=$(PWD) modules_install
-endif
 
 clean:
 	-rm -f *.o *.ko .*.cmd .*.flags *.mod.c
 
-ifneq (,$(findstring 2.6.,$(CURRENT)))
--include $(KDIR)/Rules.make
+ifneq (,$(findstring 2.4.,$(CURRENT)))
+include $(KDIR)/Rules.make
 endif

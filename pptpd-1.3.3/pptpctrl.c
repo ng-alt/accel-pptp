@@ -347,18 +347,6 @@ static void pptp_handle_ctrl_connection(char **pppaddrs, struct in_addr *inetadd
 				/* start the call, by launching pppd */
 				syslog(LOG_INFO, "CTRL: Starting call (launching pppd, opening GRE)");
 				startCall(pppaddrs, inetaddrs);
-				if (PPP_WAIT) {
-					switch(ioctl(pptp_sock,PPPTPIOWFP,PPP_WAIT)){
-					case -1:
-						syslog(LOG_ERR,
-						       "CTRL: waiting for first packet failed, ignoring");
-						break;
-					case 0:
-						syslog(LOG_ERR,
-						       "CTRL: timeout waiting for first packet");
-						break;
-					}
-				}
 				close(pptp_sock);
 				pptp_sock=-1;
 				break;

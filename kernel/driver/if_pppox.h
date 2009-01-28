@@ -82,7 +82,6 @@ struct sockaddr_pppox {
 #define PPPOEIOCSFWD	_IOW(0xB1 ,0, size_t)
 #define PPPOEIOCDFWD	_IO(0xB1 ,1)
 /*#define PPPOEIOCGFWD	_IOWR(0xB1,2, size_t)*/
-#define PPPTPIOWFP  	_IOWR(0xB1 ,2,size_t)
 
 /* Codes to identify message types */
 #define PADI_CODE	0x09
@@ -139,7 +138,6 @@ struct pppoe_opt {
 };
 #endif
 struct pptp_opt {
-	struct rb_node callid_rb_node;
 	struct pptp_addr	src_addr;
 	struct pptp_addr	dst_addr;
 	int timeout;
@@ -159,7 +157,6 @@ struct pptp_opt {
   #endif
   #endif 
 	struct gre_statistics *stat;
-	wait_queue_head_t	wait;
 	spinlock_t xmit_lock;
 	spinlock_t rcv_lock;
 };
