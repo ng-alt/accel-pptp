@@ -140,25 +140,9 @@ struct pppoe_opt {
 struct pptp_opt {
 	struct pptp_addr	src_addr;
 	struct pptp_addr	dst_addr;
-	int timeout;
 	__u32 ack_sent, ack_recv;
 	__u32 seq_sent, seq_recv;
 	int ppp_flags;
-	int flags;
-	struct sk_buff_head skb_buf;
-  #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
-	struct tq_struct buf_work; //check bufferd packets work
-	struct timer_list buf_timer;
-	#else
-  #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,20)
-	struct delayed_work buf_work; //check bufferd packets work
-  #else
-	struct work_struct buf_work; //check bufferd packets work
-  #endif
-  #endif 
-	struct gre_statistics *stat;
-	spinlock_t xmit_lock;
-	spinlock_t rcv_lock;
 };
 #define PPTP_FLAG_PAUSE 0
 #define PPTP_FLAG_PROC 1

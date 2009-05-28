@@ -1,9 +1,9 @@
-TARGET = pptp
 MDIR = extra
 
 KDIR ?= $(shell sh find_kernel_headers)
 
-obj-m      := $(TARGET).o
+obj-m      += pptp.o
+#obj-m      += ppp_generic_smp.o
 
 CURRENT = $(shell uname -r)
 
@@ -21,7 +21,7 @@ install:
 	cp -v $(TARGET).o /lib/modules/$(CURRENT)/extra/$(TARGET).o && /sbin/depmod -a
 else
 install:	
-	make -C $(KDIR) SUBDIRS=$(PWD) modules_install
+	make -C $(KDIR) M=$(PWD) modules_install
 endif
 
 kernel_headers:
