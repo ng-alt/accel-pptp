@@ -3,7 +3,7 @@ MDIR = extra
 KDIR ?= $(shell sh find_kernel_headers)
 
 obj-m      += pptp.o
-#obj-m      += ppp_generic_smp.o
+#obj-m      += gre.o
 
 CURRENT = $(shell uname -r)
 
@@ -32,6 +32,7 @@ kernel_headers:
 	    echo "using \"$(KDIR)\" kernel headers"; \
 	fi
 
+default: all
 
 clean:
 	-rm -f *.o *.ko .*.cmd .*.flags *.mod.c
