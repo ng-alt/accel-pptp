@@ -52,9 +52,15 @@
 
 /* Location of binaries */
 
+#if 1
+#define PPTP_CTRL_BIN                   "/usr/sbin/pptpctrl"
+#define PPTPD_BIN                       "/usr/sbin/pptpd"
+#define BCRELAY_BIN                     "/usr/sbin/bcrelay"
+#else
 #define PPTP_CTRL_BIN			SBINDIR "/pptpctrl"
 #define PPTPD_BIN			SBINDIR "/pptpd"
 #define BCRELAY_BIN			SBINDIR "/bcrelay"
+#endif
 
 /* Parameters permitted in the config file */
 

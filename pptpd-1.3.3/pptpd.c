@@ -810,14 +810,19 @@ static void launch_bcrelay() {
   int an = 0;
 
       if (bcrelay) {
+	   char *outif = strchr(bcrelay, ',');
+	   if (outif == NULL)
+	         outif = "ppp[0-9].*";
+	   else *outif++ = '\0';
+
            syslog(LOG_DEBUG, "MGR: BCrelay incoming interface is %s", bcrelay);
-           syslog(LOG_DEBUG, "MGR: BCrelay outgoing interface is regexp ppp[0-9].*");
+           syslog(LOG_DEBUG, "MGR: BCrelay outgoing interface is regexp %s", outif);
 
 	   bcrelay_argv[an++] = BCRELAY_BIN;
 	   bcrelay_argv[an++] = "-i";
 	   bcrelay_argv[an++] = bcrelay;
 	   bcrelay_argv[an++] = "-o";
-	   bcrelay_argv[an++] = "ppp[0-9].*";
+	   bcrelay_argv[an++] = outif;
            if (!pptp_debug) {
 	         bcrelay_argv[an++] = "-n";
            }
