@@ -6157,7 +6157,7 @@ fi
 if test "$ac_cv_header_libintl_h" = yes; then
   if test "$ac_cv_lib_c_gettext" = no; then
     if test "$ac_cv_lib_intl_gettext" = yes; then
-      XTRALIBS_MGR = "$XTRALIBS_MGR -lintl"
+      XTRALIBS_MGR="$XTRALIBS_MGR -lintl"
     else
       echo "Have libintl.h but no usable gettext!" 1>&2
       exit 1
